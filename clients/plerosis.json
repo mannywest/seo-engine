@@ -1,0 +1,20 @@
+{
+  "id": "plerosis",
+  "name": "Plerosis",
+  "siteUrl": "https://plerosis.com",
+  "description": "Plerosis helps businesses find where practical AI and automation can save time, and builds it with a human kept in control.",
+  "audience": "Owners and operations leads at small and mid-sized businesses in the UK and internationally who are curious about AI but not technical.",
+  "tone": "Plain English, honest and practical. No hype, no jargon, no made-up results.",
+  "services": ["AI opportunity assessment", "Workflow automation", "AI agents with human approval", "Custom internal tools"],
+  "keywords": ["AI automation for small business", "AI agents for business", "how to automate repetitive tasks", "AI consultancy UK", "human in the loop AI"],
+  "internalLinks": [
+    { "label": "What we do", "url": "/what-we-do" },
+    { "label": "How we work", "url": "/how-we-work" },
+    { "label": "AI Lab", "url": "/ai-lab" },
+    { "label": "Contact", "url": "/contact" }
+  ],
+  "bannedClaims": ["guaranteed", "revolutionary", "game-changing", "10x", "cutting-edge", "unlock the power"],
+  "minInternalLinks": 2,
+  "wordRange": { "min": 900, "max": 1800 },
+  "publish": { "mode": "review", "cadencePerWeek": 2, "contentDir": "src/content/blog" }
+}
