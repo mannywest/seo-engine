@@ -17,6 +17,8 @@ export interface ClientProfile {
     mode: 'review' | 'auto';
     cadencePerWeek: number;
     contentDir: string;
+    /** URL path where articles live on the site. Defaults to /blog. */
+    blogPath?: string;
   };
 }
 
@@ -46,5 +48,8 @@ export interface Draft {
 export interface QualityReport {
   passed: boolean;
   score: number;
+  /** Blocking problems. A draft passes only with none. */
   issues: string[];
+  /** Advice for the reviewer; never blocks publishing. */
+  warnings: string[];
 }
