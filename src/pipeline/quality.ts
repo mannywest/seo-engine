@@ -1,4 +1,6 @@
 import type { ClientProfile, Draft, QualityReport } from '../types.js';
+import { analyseArticle } from '../seo/onpage.js';
+import { sentences, tokens } from '../seo/text.js';
 
 export interface QualityOptions {
   /** Skip the word-count check (used for mock drafts only). */
@@ -63,5 +65,34 @@ export function checkDraft(
     issues.push(`An article with slug "${draft.topic.slug}" already exists.`);
   }
 
-  return { passed: issues.length === 0, score: Math.max(0, 100 - issues.length * 15), issues };
+  const onPage = analyseArticle({
+    title: draft.title,
+    description: draft.description,
+    slug: draft.topic.slug,
+    keyword: draft.topic.keyword,
+    body,
+  });
+  issues.push(...onPage.issues);
+  const warnings = [...onPage.warnings, ...unsupportedClaims(draft)];
+
+  return { passed: issues.length === 0, score: Math.max(0, 100 - issues.length * 15 - warnings.length * 3), issues, warnings };
+}
+
+/**
+ * Free claim check: sentences that contain a number must share most of their meaningful words with one source
+ * snippet. Not proof, but it catches invented specifics without an extra AI call.
+ */
+export function unsupportedClaims(draft: Draft): string[] {
+  const plain = draft.body.replace(/^#{1,6}\s.*$/gm, ' ').replace(/\[([^\]]*)\]\([^)]*\)/g, '$1').replace(/[*_`>]/g, '');
+  const sourceTokens = draft.sources.map((s) => new Set(tokens(`${s.title} ${s.snippet}`)));
+  const out: string[] = [];
+  for (const s of sentences(plain)) {
+    if (!/\d/.test(s)) continue;
+    const t = tokens(s).filter((w) => !/^\d+$/.test(w));
+    if (t.length < 4) continue;
+    const best = Math.max(0, ...sourceTokens.map((set) => t.filter((w) => set.has(w)).length / t.length));
+    if (best < 0.4) out.push(`Claim may be unsupported by the sources: "${s.slice(0, 90)}${s.length > 90 ? '...' : ''}"`);
+    if (out.length === 5) break;
+  }
+  return out;
 }

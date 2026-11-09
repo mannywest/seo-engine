@@ -2,6 +2,7 @@ import { z } from 'zod';
 import type { LlmProvider } from '../providers/llm.js';
 import type { ClientProfile, Topic } from '../types.js';
 import { slugify } from '../publish/markdown.js';
+import { jaccard, tokens } from '../seo/text.js';
 
 const PlanSchema = z.object({
   topics: z.array(
@@ -48,6 +49,9 @@ export async function planTopics(
   for (const t of parsed.topics) {
     const slug = slugify(t.title);
     if (!slug || seen.has(slug)) continue;
+    // Skip topics that would compete with an existing article for the same search (keyword cannibalisation).
+    const tt = tokens(t.title);
+    if ([...seen].some((s) => jaccard(tokens(s.replace(/-/g, ' ')), tt) >= 0.7)) continue;
     seen.add(slug);
     topics.push({ ...t, slug });
     if (topics.length === count) break;
