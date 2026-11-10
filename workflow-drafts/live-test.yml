@@ -1,0 +1,85 @@
+name: Live test
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  live-test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Install
+        run: |
+          mkdir -p out/logs
+          npm install
+      - name: Self-test
+        id: verify
+        continue-on-error: true
+        run: npm run verify 2>&1 | tee out/logs/1-verify.txt
+      - name: Audit plerosis.com
+        id: audit
+        continue-on-error: true
+        run: npx tsx src/cli.ts audit https://plerosis.com --out out/audit.md 2>&1 | tee out/logs/2-audit.txt
+      - name: Speed check
+        id: speed
+        continue-on-error: true
+        run: npx tsx src/cli.ts speed https://plerosis.com 2>&1 | tee out/logs/3-speed.txt
+      - name: Practice articles
+        id: mock
+        continue-on-error: true
+        run: npx tsx src/cli.ts run clients/plerosis.json --mock --out out/mock 2>&1 | tee out/logs/4-mock.txt
+      - name: Real article with Gemini
+        id: live
+        if: ${{ env.GEMINI_API_KEY != '' }}
+        continue-on-error: true
+        run: npx tsx src/cli.ts run clients/plerosis.json --live --llm gemini --model gemini-2.5-flash --crawl --count 1 --out out/live 2>&1 | tee out/logs/5-live.txt
+      - name: Summary
+        if: always()
+        run: |
+          {
+            echo "## Live test results"
+            echo "| Step | Result |"
+            echo "|---|---|"
+            echo "| Self-test | ${{ steps.verify.outcome }} |"
+            echo "| Audit | ${{ steps.audit.outcome }} |"
+            echo "| Speed check | ${{ steps.speed.outcome }} |"
+            echo "| Practice articles | ${{ steps.mock.outcome }} |"
+            echo "| Real article (skipped means no key) | ${{ steps.live.outcome }} |"
+            for f in out/logs/*.txt; do
+              echo ""
+              echo "### $f (last 40 lines)"
+              echo '```'
+              tail -n 40 "$f"
+              echo '```'
+            done
+            if [ -f out/audit.md ]; then
+              echo ""
+              echo "### Audit report (first 60 lines)"
+              echo '```'
+              head -n 60 out/audit.md
+              echo '```'
+            fi
+            a=$(find out/live -name '*.md' 2>/dev/null | head -n 1)
+            if [ -n "$a" ]; then
+              echo ""
+              echo "### Real article (first 80 lines)"
+              echo '```'
+              head -n 80 "$a"
+              echo '```'
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: live-test-results
+          path: out/
+          if-no-files-found: warn
