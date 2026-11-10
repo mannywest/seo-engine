@@ -1,0 +1,96 @@
+name: Model bake-off
+on:
+  workflow_dispatch:
+    inputs:
+      count:
+        description: Articles per model
+        default: "2"
+permissions:
+  contents: read
+jobs:
+  bakeoff:
+    name: ${{ matrix.label }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - label: claude-sonnet
+            llm: anthropic
+            model: claude-sonnet-5-5
+            key_env: ANTHROPIC_API_KEY
+          - label: claude-haiku
+            llm: anthropic
+            model: claude-haiku-5-5
+            key_env: ANTHROPIC_API_KEY
+          - label: gemini-flash
+            llm: gemini
+            model: gemini-2.5-flash
+            key_env: GEMINI_API_KEY
+    env:
+      ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+      GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Install
+        run: npm install
+      - name: Write articles
+        id: run
+        continue-on-error: true
+        env:
+          KEY_ENV: ${{ matrix.key_env }}
+        run: |
+          d=out/${{ matrix.label }}
+          mkdir -p "$d"
+          if [ -z "${!KEY_ENV}" ]; then
+            echo "No key for ${{ matrix.label }}; skipped." | tee "$d/log.txt"
+            exit 0
+          fi
+          start=$(date +%s)
+          status=0
+          npx tsx src/cli.ts run clients/plerosis.json --live --llm ${{ matrix.llm }} --model ${{ matrix.model }} --crawl --count ${{ inputs.count }} --out "$d/articles" 2>&1 | tee "$d/log.txt" || status=$?
+          echo $(( $(date +%s) - start )) > "$d/seconds.txt"
+          exit $status
+      - name: Summary
+        if: always()
+        run: |
+          d=out/${{ matrix.label }}
+          pass=$(grep -c '^PASS' "$d/log.txt" 2>/dev/null || true)
+          review=$(grep -c '^REVIEW' "$d/log.txt" 2>/dev/null || true)
+          words=$(find "$d/articles" -name '*.md' -exec cat {} + 2>/dev/null | wc -w)
+          {
+            echo "## ${{ matrix.label }} (${{ matrix.llm }} / ${{ matrix.model }})"
+            echo ""
+            echo "- Run result: ${{ steps.run.outcome }}"
+            [ -f "$d/seconds.txt" ] && echo "- Time: $(cat "$d/seconds.txt") seconds"
+            echo "- Passed the quality gate: ${pass:-0}"
+            echo "- Needed review or blocked: ${review:-0}"
+            echo "- Total words written: $words"
+            echo "- Cost: not measured by the engine yet. Check the provider's usage page."
+            echo ""
+            echo "### Log (last 40 lines)"
+            echo '```'
+            tail -n 40 "$d/log.txt" 2>/dev/null
+            echo '```'
+            a=$(find "$d/articles" -name '*.md' 2>/dev/null | head -n 1)
+            if [ -n "$a" ]; then
+              echo ""
+              echo "### First article (first 80 lines)"
+              echo '```'
+              head -n 80 "$a"
+              echo '```'
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: bakeoff-${{ matrix.label }}
+          path: out/${{ matrix.label }}
+          if-no-files-found: warn
