@@ -41,7 +41,7 @@ jobs:
         id: live
         if: ${{ env.GEMINI_API_KEY != '' }}
         continue-on-error: true
-        run: npx tsx src/cli.ts run clients/plerosis.json --live --llm gemini --model gemini-2.5-flash --crawl --count 1 --out out/live 2>&1 | tee out/logs/5-live.txt
+        run: npx tsx src/cli.ts run clients/plerosis.json --live --llm gemini --model gemini-3.8-flash --crawl --count 1 --out out/live 2>&1 | tee out/logs/5-live.txt
       - name: Summary
         if: always()
         run: |
