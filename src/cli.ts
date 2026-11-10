@@ -2,6 +2,8 @@ import { mkdir, readdir, readFile, writeFile } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
 import { createConnector } from './connectors/index.js';
 import { History } from './history.js';
+import { buildReceipt } from './receipt.js';
+import { UsageLog } from './usage.js';
 import { notify } from './notify.js';
 import { chooseLlm } from './providers/choose.js';
 import { loadProfile, runClient } from './runClient.js';
@@ -36,6 +38,9 @@ const USAGE = `seo-engine commands (all free to run except --llm anthropic):
       Plan, research, draft, check and write articles. --mock costs nothing and writes placeholders.
       Sources: your notes in DIR (default clients/<id>/sources) and, with --crawl, the client's own site.
       --publish delivers articles that pass the checks through the client's connector.
+
+  receipt <client.json> [--month YYYY-MM]
+      Print the plain-English monthly work receipt for a client.
 
   run-all [--llm gemini|...] [--dry]
       What the scheduler runs: every clients/*.json that is due (by its articles-per-week setting),
@@ -228,6 +233,14 @@ function loadSecretsBlob() {
   }
 }
 
+async function cmdReceipt(target: string) {
+  const profile = await loadProfile(target);
+  const month = arg('month') ?? new Date().toISOString().slice(0, 7);
+  const history = await History.load(profile.id);
+  const usage = await UsageLog.load(profile.id);
+  console.log(buildReceipt({ clientName: profile.name, month, plan: profile.plan, history: history.entries, usage: usage.forMonth(month) }));
+}
+
 async function main() {
   loadSecretsBlob();
   const [cmd, target] = process.argv.slice(2);
@@ -244,6 +257,7 @@ async function main() {
   else if (cmd === 'audit') await cmdAudit(target);
   else if (cmd === 'gsc') await cmdGsc(target);
   else if (cmd === 'site') await cmdSite(target);
+  else if (cmd === 'receipt') await cmdReceipt(target);
   else {
     console.log(USAGE);
     process.exit(1);

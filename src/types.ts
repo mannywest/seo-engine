@@ -1,5 +1,11 @@
+import type { PlanId } from './plans.js';
+
 export interface ClientProfile {
   id: string;
+  /** Which plan the client is on. Defaults to local. */
+  plan?: PlanId;
+  /** Hard stop on estimated AI tokens per calendar month. Omit for no cap. */
+  llmTokenCapPerMonth?: number;
   name: string;
   siteUrl: string;
   description: string;

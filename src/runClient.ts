@@ -1,5 +1,7 @@
 import { readFile } from 'node:fs/promises';
 import { createConnector } from './connectors/index.js';
+import { MeteredProvider, UsageLog } from './usage.js';
+import { articlesRemaining } from './plans.js';
 import { History } from './history.js';
 import { runPipeline, type RunResult } from './pipeline/run.js';
 import { crawlSite } from './seo/crawl.js';
@@ -45,7 +47,19 @@ export async function runClient(profile: ClientProfile, o: RunClientOptions): Pr
   const history = o.live ? await History.load(profile.id, o.dataDir) : undefined;
   const connector = o.publish && profile.connector ? createConnector(profile.connector) : undefined;
   if (o.publish && !profile.connector) throw new Error(`${profile.id}: no "connector" in the client file, so there is nowhere to deliver articles.`);
-  const results = await runPipeline(profile, llm, search, { count: o.count, outDir, mock: !o.live, history, connector });
-  await history?.save();
-  return results;
+  const usage = o.live ? await UsageLog.load(profile.id, o.dataDir) : undefined;
+  if (usage) llm = new MeteredProvider(llm, usage, { monthlyTokenCap: profile.llmTokenCapPerMonth });
+  let count = o.count;
+  if (history) {
+    const month = new Date().toISOString().slice(0, 7);
+    const used = history.entries.filter((e) => e.createdAt.startsWith(month)).length;
+    count = Math.min(count, articlesRemaining(profile.plan, used));
+  }
+  if (count <= 0) return [];
+  try {
+    return await runPipeline(profile, llm, search, { count, outDir, mock: !o.live, history, connector });
+  } finally {
+    await history?.save();
+    await usage?.save();
+  }
 }

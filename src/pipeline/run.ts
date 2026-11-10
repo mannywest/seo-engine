@@ -5,6 +5,7 @@ import type { History } from '../history.js';
 import type { LlmProvider } from '../providers/llm.js';
 import type { SearchProvider } from '../providers/search.js';
 import type { ClientProfile, QualityReport } from '../types.js';
+import { buildProof, renderProof } from '../proof.js';
 import { toMarkdownFile } from '../publish/markdown.js';
 import { writeDraft } from './draft.js';
 import { planTopics } from './plan.js';
@@ -55,6 +56,10 @@ export async function runPipeline(
     const path = join(opts.outDir, `${file.slug}.md`);
     await mkdir(dirname(path), { recursive: true });
     await writeFile(path, file.content, 'utf8');
+    // Proof packs live beside the articles folder so they never get mistaken for articles.
+    const proofDir = `${opts.outDir.replace(/[\\/]+$/, '')}.proofs`;
+    await mkdir(proofDir, { recursive: true });
+    await writeFile(join(proofDir, `${file.slug}.proof.md`), renderProof(buildProof(draft, quality, profile, llm.name)), 'utf8');
     slugs.push(file.slug);
     const result: RunResult = { slug: file.slug, path, quality };
 
