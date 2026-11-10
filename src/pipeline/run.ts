@@ -3,6 +3,7 @@ import { dirname, join } from 'node:path';
 import type { Connector, PublishItem } from '../connectors/types.js';
 import type { FactsVault } from '../facts.js';
 import type { History } from '../history.js';
+import { recordDelivery, type Ledger } from '../ledger.js';
 import type { LlmProvider } from '../providers/llm.js';
 import type { SearchProvider } from '../providers/search.js';
 import type { ClientProfile, QualityReport } from '../types.js';
@@ -23,6 +24,8 @@ export interface RunOptions {
   connector?: Connector;
   /** The client's confirmed business facts. When set, drafts may only state these about the business (the answer guard enforces it). */
   vault?: FactsVault;
+  /** If set, every delivery that goes through is recorded so it can be taken back. */
+  ledger?: Ledger;
 }
 
 export interface RunResult {
@@ -84,6 +87,7 @@ export async function runPipeline(
         });
         result.deliveredTo = r?.ok ? r.url ?? opts.connector.type : undefined;
         result.deliveryNote = r?.note;
+        if (r?.ok && opts.ledger) recordDelivery(opts.ledger, opts.connector, { slug: file.slug, title: draft.title }, r, { mode: profile.publish.mode });
       } catch (e) {
         result.deliveryNote = `Delivery failed: ${e instanceof Error ? e.message : String(e)}`;
       }

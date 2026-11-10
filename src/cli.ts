@@ -3,6 +3,7 @@ import { dirname, join } from 'node:path';
 import { createConnector } from './connectors/index.js';
 import { FACT_KINDS, FactsVault, type FactKind } from './facts.js';
 import { History } from './history.js';
+import { Ledger, revertChange } from './ledger.js';
 import { buildReceipt } from './receipt.js';
 import { UsageLog } from './usage.js';
 import { notify } from './notify.js';
@@ -48,6 +49,12 @@ const USAGE = `seo-engine commands (all free to run except --llm anthropic):
       credentials, guarantees, policies). Articles may only state these about the business. Adding a fact
       marks it as confirmed today, so only add what the business has actually told you.
       KIND is one of: ${FACT_KINDS.join(', ')}. Write times like 8am-6pm so the guard can read them.
+
+  ledger <client.json> [--revert ID [--force]]
+      List every change the engine has made to the client's site. --revert ID takes one back safely:
+      it refuses if the page has been edited since, and nothing is ever deleted (files are moved aside,
+      WordPress posts go to the trash, GitHub changes become a pull request). --force undoes it anyway.
+      Needs the same access (environment variables) as publishing. Articles sent by webhook cannot be taken back from here.
 
   run-all [--llm gemini|...] [--dry]
       What the scheduler runs: every clients/*.json that is due (by its articles-per-week setting),
@@ -281,6 +288,30 @@ async function cmdFacts(target: string) {
   if (stale.length) console.log(`\n${stale.length} fact(s) are over 6 months old and should be re-confirmed: ${stale.map((f) => f.label).join(', ')}.`);
 }
 
+const LEDGER_STATUS = { applied: 'done', reverted: 'undone', revert_pending: 'undo waiting for approval', revert_failed: 'undo failed' } as const;
+
+async function cmdLedger(target: string) {
+  const profile = await loadProfile(target);
+  const ledger = await Ledger.load(profile.id);
+  const id = arg('revert');
+  if (id) {
+    const connector = profile.connector ? createConnector(profile.connector) : undefined;
+    const out = await revertChange(ledger, id, connector, { mode: profile.publish.mode, clientName: profile.name, force: flag('force') });
+    await ledger.save();
+    console.log(`${out.message}${out.url ? `\n${out.url}` : ''}\n`);
+    if (!out.ok) process.exitCode = 1;
+  }
+  if (!ledger.entries.length) {
+    console.log(`${profile.name}: no changes recorded yet.`);
+    return;
+  }
+  console.log(`${profile.name}: ${ledger.entries.length} recorded change${ledger.entries.length === 1 ? '' : 's'}`);
+  for (const e of ledger.entries) {
+    const undo = e.kind === 'publish' && e.status === 'applied' ? (e.reversible ? '  can be undone' : '  cannot be undone from here') : '';
+    console.log(`  ${e.at.slice(0, 16).replace('T', ' ')}  [${LEDGER_STATUS[e.status]}]  ${e.summary}${undo}\n      id: ${e.id}`);
+  }
+}
+
 async function main() {
   loadSecretsBlob();
   const [cmd, target] = process.argv.slice(2);
@@ -299,6 +330,7 @@ async function main() {
   else if (cmd === 'site') await cmdSite(target);
   else if (cmd === 'receipt') await cmdReceipt(target);
   else if (cmd === 'facts') await cmdFacts(target);
+  else if (cmd === 'ledger') await cmdLedger(target);
   else {
     console.log(USAGE);
     process.exit(1);

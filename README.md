@@ -8,7 +8,7 @@ Everything runs free **except** the AI that writes the article text, and even th
 
 ```bash
 npm install
-npm run verify                                   # typecheck + 84 tests
+npm run verify                                   # typecheck + 110 tests
 
 # Write articles (placeholder text, no cost):
 npx tsx src/cli.ts run clients/plerosis.json --mock
@@ -25,6 +25,12 @@ ANTHROPIC_API_KEY=... npx tsx src/cli.ts run clients/plerosis.json --live --llm 
 # Live runs hold back any article that states something unconfirmed.
 npx tsx src/cli.ts facts clients/plerosis.json
 npx tsx src/cli.ts facts clients/plerosis.json --add price --label "Boiler service" --value "£79"
+
+# Change ledger: every article the engine delivered, and a safe way to take one back.
+# Undo refuses if the page was edited since, and never deletes (files move to .reverted, WordPress posts go
+# to the trash, GitHub changes become a pull request). Webhook deliveries cannot be undone from here.
+npx tsx src/cli.ts ledger clients/plerosis.json
+npx tsx src/cli.ts ledger clients/plerosis.json --revert <id> [--force]
 
 # Audit any site (technical, on-page, structured data, AI search):
 npx tsx src/cli.ts audit https://plerosis.com --out out/audit.md

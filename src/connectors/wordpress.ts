@@ -1,5 +1,8 @@
 import { marked } from 'marked';
-import type { Connector, Env, Fetch, PublishContext, PublishItem, PublishResult } from './types.js';
+import { z } from 'zod';
+import type { Connector, Env, Fetch, PublishContext, PublishItem, PublishResult, RevertContext, RevertResult } from './types.js';
+
+const Handle = z.object({ postId: z.number(), modifiedGmt: z.string().optional() });
 
 export interface WordPressConfig {
   type: 'wordpress';
@@ -64,14 +67,33 @@ export class WordPressConnector implements Connector {
         out.push({ slug: i.slug, ok: false, note: `WordPress returned ${res.status}.` });
         continue;
       }
-      const json = (await res.json()) as { link?: string; id?: number };
+      const json = (await res.json()) as { link?: string; id?: number; modified_gmt?: string };
       out.push({
         slug: i.slug,
         ok: true,
         url: json.link,
         note: ctx.mode === 'auto' ? 'Published.' : 'Saved as a WordPress draft; open it and press Publish.',
+        ...(typeof json.id === 'number' ? { handle: { postId: json.id, ...(json.modified_gmt ? { modifiedGmt: json.modified_gmt } : {}) } } : {}),
       });
     }
     return out;
+  }
+
+  /** Moves the post to the WordPress trash, where it can be restored. Refuses if someone edited it after we delivered it. */
+  async revert(handle: Record<string, unknown>, ctx: RevertContext): Promise<RevertResult> {
+    const h = Handle.parse(handle);
+    const got = await this.fetchFn(this.url(`/posts/${h.postId}?context=edit`), { headers: this.headers() });
+    if (got.status === 404) return { ok: true, note: 'The post was already gone, so there was nothing to undo.' };
+    if (!got.ok) throw new Error(`WordPress returned ${got.status} when looking up post ${h.postId}.`);
+    const now = (await got.json()) as { status?: string; modified_gmt?: string };
+    if (now.status === 'trash') return { ok: true, note: 'The post was already in the WordPress trash.' };
+    if (h.modifiedGmt && now.modified_gmt !== h.modifiedGmt && !ctx.force) {
+      return { ok: false, refused: true, note: 'The post has been edited in WordPress since it was delivered, so it was left alone. Undo it with force if you are sure.' };
+    }
+    // No "force" parameter on the DELETE: WordPress moves the post to the trash instead of erasing it.
+    const del = await this.fetchFn(this.url(`/posts/${h.postId}`), { method: 'DELETE', headers: this.headers() });
+    if (!del.ok) throw new Error(`WordPress returned ${del.status} when moving post ${h.postId} to the trash.`);
+    const checked = h.modifiedGmt ? '' : ' (WordPress did not say when it was last edited, so later edits could not be checked)';
+    return { ok: true, note: `Moved the post to the WordPress trash, where it can be restored${checked}.` };
   }
 }
