@@ -65,6 +65,9 @@ export function checkDraft(
     issues.push(`An article with slug "${draft.topic.slug}" already exists.`);
   }
 
+  const noAlt = [...body.matchAll(/!\[([^\]]*)\]\(/g)].filter((m) => !(m[1] ?? '').trim()).length;
+  if (noAlt) issues.push(`${noAlt} image(s) have no alt text (hurts accessibility and image search).`);
+
   const onPage = analyseArticle({
     title: draft.title,
     description: draft.description,
