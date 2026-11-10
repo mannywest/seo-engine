@@ -1,3 +1,5 @@
+import { HttpError, parseRetryAfter, withRetry, type RetryOptions } from '../retry.js';
+
 export type Rating = 'good' | 'needs improvement' | 'poor';
 
 export interface SpeedReport {
@@ -63,11 +65,18 @@ export async function runPageSpeed(
   strategy: 'mobile' | 'desktop' = 'mobile',
   env = process.env,
   fetchFn: typeof fetch = fetch,
+  retry: RetryOptions = { attempts: 3 },
 ): Promise<SpeedReport> {
   const q = new URLSearchParams({ url, strategy, category: 'performance' });
   if (env.PAGESPEED_API_KEY) q.set('key', env.PAGESPEED_API_KEY);
-  const res = await fetchFn(`https://www.googleapis.com/pagespeedonline/v5/runPagespeed?${q}`, { signal: AbortSignal.timeout(90_000) });
-  if (!res.ok) throw new Error(`PageSpeed Insights returned ${res.status}. If it is 429, set PAGESPEED_API_KEY.`);
+  const res = await withRetry(async () => {
+    const r = await fetchFn(`https://www.googleapis.com/pagespeedonline/v5/runPagespeed?${q}`, { signal: AbortSignal.timeout(90_000) });
+    if (!r.ok) {
+      const hint = r.status === 429 && !env.PAGESPEED_API_KEY ? ' Without a key Google shares a very small allowance: set PAGESPEED_API_KEY (free).' : '';
+      throw new HttpError(r.status, `PageSpeed Insights returned ${r.status}.${hint}`, parseRetryAfter(r.headers?.get?.('retry-after')));
+    }
+    return r;
+  }, retry);
   return summarisePsi(url, strategy, (await res.json()) as PsiResponse);
 }
 

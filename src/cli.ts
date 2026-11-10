@@ -36,7 +36,7 @@ const USAGE = `seo-engine commands (all free to run except --llm anthropic):
   check <client.json>
       Test that a client is ready: config valid, connector credentials work. Publishes nothing.
 
-  run <client.json> [--mock | --live] [--llm anthropic|ollama|gemini|groq|openrouter|openai-compatible] [--model NAME]
+  run <client.json> [--mock | --live] [--llm anthropic|ollama|gemini|groq|openrouter|openai-compatible] [--model NAME] [--fallback groq,openrouter]
                     [--sources DIR] [--crawl] [--count N] [--out DIR] [--publish]
       Plan, research, draft, check and write articles. --mock costs nothing and writes placeholders.
       Sources: your notes in DIR (default clients/<id>/sources) and, with --crawl, the client's own site.
@@ -78,13 +78,19 @@ const USAGE = `seo-engine commands (all free to run except --llm anthropic):
       Build sitemap.xml, robots.txt, llms.txt, rss.xml and JSON-LD for published articles, plus a strategy report.
 `;
 
+/** Backup AIs from --fallback groq,openrouter or the SEO_FALLBACK setting. */
+function fallbackList(): string[] | undefined {
+  const v = arg('fallback', process.env.SEO_FALLBACK);
+  return v ? v.split(',').map((x) => x.trim()).filter(Boolean) : undefined;
+}
+
 async function cmdRun(profilePath: string) {
   const profile = await loadProfile(profilePath);
   const live = flag('live');
   if (!live) console.log('MOCK MODE: no AI calls, no cost. Output is placeholder text.\n');
   const results = await runClient(profile, {
     live,
-    llm: { llm: arg('llm', 'anthropic')!, model: arg('model'), baseUrl: arg('base-url') },
+    llm: { llm: arg('llm', 'anthropic')!, model: arg('model'), baseUrl: arg('base-url'), fallback: fallbackList() },
     sourcesDir: arg('sources'),
     crawl: flag('crawl'),
     count: Number(arg('count', '2')),
@@ -119,7 +125,7 @@ async function cmdRunAll() {
       }
       const results = await runClient(profile, {
         live: true,
-        llm: { llm: arg('llm', process.env.SEO_LLM ?? 'gemini')!, model: arg('model', process.env.SEO_MODEL), baseUrl: arg('base-url') },
+        llm: { llm: arg('llm', process.env.SEO_LLM ?? 'gemini')!, model: arg('model', process.env.SEO_MODEL), baseUrl: arg('base-url'), fallback: fallbackList() },
         crawl: true,
         count: 1,
         publish: !!profile.connector,

@@ -1,3 +1,4 @@
+import { HttpError, parseRetryAfter, withRetry, type RetryOptions } from '../retry.js';
 import type { LlmProvider, LlmRequest } from './llm.js';
 
 /**
@@ -12,21 +13,32 @@ export class OpenAiCompatProvider implements LlmProvider {
     private model: string,
     private baseUrl: string,
     private fetchFn: typeof fetch = fetch,
+    private retry: RetryOptions = {},
   ) {}
   async complete(req: LlmRequest): Promise<string> {
-    const res = await this.fetchFn(`${this.baseUrl.replace(/\/$/, '')}/chat/completions`, {
-      method: 'POST',
-      headers: { 'content-type': 'application/json', authorization: `Bearer ${this.apiKey}` },
-      body: JSON.stringify({
-        model: this.model,
-        max_tokens: req.maxTokens,
-        messages: [
-          { role: 'system', content: req.system },
-          { role: 'user', content: req.prompt },
-        ],
-      }),
-    });
-    if (!res.ok) throw new Error(`LLM service returned ${res.status}: ${(await res.text()).slice(0, 200)}`);
+    // Busy or overloaded answers (429, 5xx) are retried with growing waits; other errors stop straight away.
+    const res = await withRetry(async () => {
+      const r = await this.fetchFn(`${this.baseUrl.replace(/\/$/, '')}/chat/completions`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json', authorization: `Bearer ${this.apiKey}` },
+        body: JSON.stringify({
+          model: this.model,
+          max_tokens: req.maxTokens,
+          messages: [
+            { role: 'system', content: req.system },
+            { role: 'user', content: req.prompt },
+          ],
+        }),
+      });
+      if (!r.ok) {
+        throw new HttpError(
+          r.status,
+          `LLM service returned ${r.status}: ${(await r.text()).slice(0, 200)}`,
+          parseRetryAfter(r.headers?.get?.('retry-after')),
+        );
+      }
+      return r;
+    }, this.retry);
     const json = (await res.json()) as { choices?: { message?: { content?: string } }[] };
     return json.choices?.[0]?.message?.content ?? '';
   }
