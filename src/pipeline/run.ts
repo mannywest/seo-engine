@@ -1,5 +1,7 @@
 import { mkdir, readdir, writeFile } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
+import type { Connector, PublishItem } from '../connectors/types.js';
+import type { History } from '../history.js';
 import type { LlmProvider } from '../providers/llm.js';
 import type { SearchProvider } from '../providers/search.js';
 import type { ClientProfile, QualityReport } from '../types.js';
@@ -13,12 +15,18 @@ export interface RunOptions {
   count: number;
   outDir: string;
   mock: boolean;
+  /** Memory of past runs; stops topics repeating. */
+  history?: History;
+  /** If set, drafts that pass the quality check are delivered to the client's site. */
+  connector?: Connector;
 }
 
 export interface RunResult {
   slug: string;
   path: string;
   quality: QualityReport;
+  deliveredTo?: string;
+  deliveryNote?: string;
 }
 
 async function existingSlugs(outDir: string): Promise<string[]> {
@@ -36,7 +44,7 @@ export async function runPipeline(
   search: SearchProvider,
   opts: RunOptions,
 ): Promise<RunResult[]> {
-  const slugs = await existingSlugs(opts.outDir);
+  const slugs = [...new Set([...(await existingSlugs(opts.outDir)), ...(opts.history?.slugs() ?? [])])];
   const topics = await planTopics(profile, llm, slugs, opts.count);
   const results: RunResult[] = [];
   for (const topic of topics) {
@@ -48,7 +56,40 @@ export async function runPipeline(
     await mkdir(dirname(path), { recursive: true });
     await writeFile(path, file.content, 'utf8');
     slugs.push(file.slug);
-    results.push({ slug: file.slug, path, quality });
+    const result: RunResult = { slug: file.slug, path, quality };
+
+    // Only drafts that pass the automatic checks leave the engine. The rest stay local for a human to look at.
+    if (opts.connector && quality.passed && !opts.mock) {
+      const item: PublishItem = {
+        slug: file.slug,
+        title: draft.title,
+        description: draft.description,
+        tags: draft.tags,
+        body: draft.body.trim(),
+        markdown: file.content,
+      };
+      try {
+        const [r] = await opts.connector.publish([item], {
+          clientId: profile.id,
+          clientName: profile.name,
+          mode: profile.publish.mode,
+        });
+        result.deliveredTo = r?.ok ? r.url ?? opts.connector.type : undefined;
+        result.deliveryNote = r?.note;
+      } catch (e) {
+        result.deliveryNote = `Delivery failed: ${e instanceof Error ? e.message : String(e)}`;
+      }
+    }
+    opts.history?.add({
+      slug: file.slug,
+      title: draft.title,
+      keyword: topic.keyword,
+      createdAt: new Date().toISOString(),
+      passed: quality.passed,
+      score: quality.score,
+      deliveredTo: result.deliveredTo,
+    });
+    results.push(result);
   }
   return results;
 }

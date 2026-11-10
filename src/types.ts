@@ -10,6 +10,8 @@ export interface ClientProfile {
   internalLinks: { label: string; url: string }[];
   /** Phrases that must never appear in an article (e.g. "guaranteed"). */
   bannedClaims: string[];
+  /** Where finished articles are delivered. Omit to keep them as local files only. See src/connectors. */
+  connector?: unknown;
   minInternalLinks: number;
   wordRange: { min: number; max: number };
   publish: {
