@@ -8,7 +8,7 @@ Everything runs free **except** the AI that writes the article text, and even th
 
 ```bash
 npm install
-npm run verify                                   # typecheck + 110 tests
+npm run verify                                   # typecheck + 121 tests
 
 # Write articles (placeholder text, no cost):
 npx tsx src/cli.ts run clients/plerosis.json --mock
@@ -34,6 +34,10 @@ npx tsx src/cli.ts ledger clients/plerosis.json --revert <id> [--force]
 
 # Audit any site (technical, on-page, structured data, AI search):
 npx tsx src/cli.ts audit https://plerosis.com --out out/audit.md
+
+# Site safety check: thin pages, near-copy town pages, padded or stock machine-written text, spammy links.
+# Recommends only (keep / rewrite / merge / expand / remove); never changes the site.
+npx tsx src/cli.ts safety https://plerosis.com --out out/safety.md
 
 # Find opportunities in a Google Search Console export (Queries.csv):
 npx tsx src/cli.ts gsc ~/Downloads/Queries.csv

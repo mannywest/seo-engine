@@ -15,6 +15,7 @@ import { renderSpeed, runPageSpeed } from './seo/pagespeed.js';
 import { parseArticle } from './publish/frontmatter.js';
 import { buildSiteArtifacts } from './publish/site.js';
 import { auditSite } from './seo/audit.js';
+import { assessSafety, renderSafetyReport } from './seo/safety.js';
 import { crawlSite } from './seo/crawl.js';
 import { findOpportunities, parseGscCsv } from './seo/gsc.js';
 import { renderAuditReport } from './seo/report.js';
@@ -67,6 +68,7 @@ const USAGE = `seo-engine commands (all free to run except --llm anthropic):
       Live Search Console data (free) using a service account, then the same opportunity report as gsc.
 
   audit <url> [--max N] [--out report.md]
+  safety <url> [--max N] [--out report.md]   site safety score and rescue plan (thin, near-copy, padded, spammy pages)
       Crawl a site and report technical, on-page, structured-data and AI-search problems.
 
   gsc <Queries.csv>
@@ -204,6 +206,17 @@ async function cmdAudit(url: string) {
   } else console.log(report);
 }
 
+async function cmdSafety(url: string) {
+  const site = await crawlSite(url, undefined, { maxPages: Number(arg('max', '100')) });
+  const report = renderSafetyReport(assessSafety(site));
+  const out = arg('out');
+  if (out) {
+    await mkdir(dirname(out), { recursive: true });
+    await writeFile(out, report, 'utf8');
+    console.log(`Report written to ${out}`);
+  } else console.log(report);
+}
+
 async function cmdGsc(csvPath: string) {
   const o = findOpportunities(parseGscCsv(await readFile(csvPath, 'utf8')));
   const show = (title: string, rows: typeof o.strikingDistance) => {
@@ -326,6 +339,7 @@ async function main() {
   else if (cmd === 'speed') await cmdSpeed(target);
   else if (cmd === 'gsc-api') await cmdGscApi(target);
   else if (cmd === 'audit') await cmdAudit(target);
+  else if (cmd === 'safety') await cmdSafety(target);
   else if (cmd === 'gsc') await cmdGsc(target);
   else if (cmd === 'site') await cmdSite(target);
   else if (cmd === 'receipt') await cmdReceipt(target);
