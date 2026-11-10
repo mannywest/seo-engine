@@ -1,3 +1,5 @@
+import type { FactsVault } from '../facts.js';
+import { guardDraft } from '../guard.js';
 import type { ClientProfile, Draft, QualityReport } from '../types.js';
 import { analyseArticle } from '../seo/onpage.js';
 import { sentences, tokens } from '../seo/text.js';
@@ -6,6 +8,9 @@ export interface QualityOptions {
   /** Skip the word-count check (used for mock drafts only). */
   skipLength?: boolean;
   existingSlugs?: string[];
+  /** The client's confirmed business facts. When given, the answer guard runs and the vault counts as a source for figures. */
+  vault?: FactsVault;
+  now?: Date;
 }
 
 const FIGURE = /(?:[£$€]\s?\d[\d,.]*\s?(?:k|m|bn)?|\d+(?:\.\d+)?\s?%)/gi;
@@ -55,9 +60,13 @@ export function checkDraft(
     if (lower.includes(phrase.toLowerCase())) issues.push(`Contains banned claim: "${phrase}".`);
   }
 
+  // The business's own confirmed facts count as a source, so a price taken from the vault is not flagged as invented.
+  const sources = opts.vault && !opts.vault.isEmpty ? [...draft.sources, opts.vault.asSource()] : draft.sources;
+
   // Any statistic or money figure must appear in a source snippet, otherwise it may be invented.
-  const sourceText = normalise(draft.sources.map((s) => `${s.title} ${s.snippet}`).join(' '));
-  for (const fig of new Set(body.match(FIGURE) ?? [])) {
+  const sourceText = normalise(sources.map((s) => `${s.title} ${s.snippet}`).join(' '));
+  // The pattern can swallow a trailing full stop or line break ("£79.\n"), so trim them before comparing.
+  for (const fig of new Set((body.match(FIGURE) ?? []).map((f) => f.replace(/[\s.,]+$/, '')))) {
     if (!sourceText.includes(normalise(fig))) issues.push(`Figure "${fig}" is not supported by any source.`);
   }
 
@@ -76,9 +85,19 @@ export function checkDraft(
     body,
   });
   issues.push(...onPage.issues);
-  const warnings = [...onPage.warnings, ...unsupportedClaims(draft)];
 
-  return { passed: issues.length === 0, score: Math.max(0, 100 - issues.length * 15 - warnings.length * 3), issues, warnings };
+  // The answer guard: nothing stated about the business itself may go beyond what the business has confirmed.
+  const guard = opts.vault ? guardDraft(body, opts.vault, { businessName: profile.name, now: opts.now }) : undefined;
+  if (guard) issues.push(...guard.issues);
+  const warnings = [...onPage.warnings, ...unsupportedClaims({ ...draft, sources }), ...(guard?.warnings ?? [])];
+
+  return {
+    passed: issues.length === 0,
+    score: Math.max(0, 100 - issues.length * 15 - warnings.length * 3),
+    issues,
+    warnings,
+    ...(guard ? { factsUsed: guard.factsUsed.map((f) => ({ label: f.label, value: f.value, verifiedAt: f.verifiedAt })) } : {}),
+  };
 }
 
 /**

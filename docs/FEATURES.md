@@ -161,13 +161,14 @@ Features that no competitor reviewed offers in this form, or offers only to larg
 
 | Feature | What the owner gets | Mode | Status |
 |---|---|---|---|
-| Proof pack | Every draft shows each claim, its source, what was checked, and why the page exists, before approval. Optional public "how this page was made" note | Approve | To build |
-| Business facts vault | The owner confirms hours, prices, services, areas and policies once. The engine uses them for the site markup, the Google profile, directory guidance, llms.txt and FAQ pages, and alerts when sources disagree | Guided | To build |
-| AI answer guard | Scheduled checks of what AI assistants say about the business, compared with the facts vault. It fixes the sources we control and re-tests until the answer is right. No assistant offers a correction form, so the fix is indirect and may take time | Auto | To build |
+| Proof pack | Every draft shows each claim, its source, what was checked, and why the page exists, before approval. Optional public "how this page was made" note | Approve | Built (proof file per article; public note not built) |
+| Business facts vault | The owner confirms hours, prices, services, areas and policies once. The engine uses them for the site markup, the Google profile, directory guidance, llms.txt and FAQ pages, and alerts when sources disagree | Guided | Built (store, drafting rules, stale-fact warning; the other uses are not built) |
+| Draft claim guard | Before an article leaves the engine, anything it says about the business itself (hours, prices the business charges, phone and email, service areas, credentials, guarantees, years in business) is checked against the facts vault. Anything not confirmed is held for review. A pattern check on sentences in the business's own voice, so it can miss a claim worded some other way | Auto | Built |
+| AI answer guard | Scheduled checks of what AI assistants say about the business, compared with the facts vault. It fixes the sources we control and re-tests until the answer is right. No assistant offers a correction form, so the fix is indirect and may take time. The claim-finding code is shared with the draft claim guard; the asking and re-testing is not built | Auto | To build |
 | Site safety score and AI-content rescue audit | A score for thin or repetitive pages, link schemes and doorway-style pages, with what to prune. A free check for sites hurt by autopilot tools | Auto | To build |
 | Capped publishing and content pruning | A monthly cap per plan, plus merge, prune and refresh recommendations | Approve | To build |
 | Change ledger with safe revert | Every change is recorded with before and after numbers and a one-tap revert. Automatic revert only for technical breakage such as a page blocked from indexing | Approve | To build |
-| Work receipt | A monthly list of exactly what was delivered against the plan's allowance, with links to the evidence | Auto | To build |
+| Work receipt | A monthly list of exactly what was delivered against the plan's allowance, with links to the evidence | Auto | Built |
 | Agent-ready actions | Quote and booking actions that AI agents can use (WebMCP-style). A research bet: standards are early | Guided | Research |
 
 ## 13. Plans and add-ons (proposed, not final)

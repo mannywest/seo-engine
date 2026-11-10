@@ -10,6 +10,8 @@ export interface ProofPack {
   sources: { title: string; url: string }[];
   checks: { passed: boolean; score: number; issues: string[]; warnings: string[] };
   bannedClaimsChecked: string[];
+  /** Confirmed business facts the article relied on. Absent when the answer guard did not run. */
+  factsUsed?: { label: string; value: string; verifiedAt: string }[];
 }
 
 /** A record of why an article can be trusted: where facts came from, what was checked, and a fingerprint of the text. */
@@ -23,6 +25,7 @@ export function buildProof(draft: Draft, quality: QualityReport, profile: Client
     sources: draft.sources.map((s) => ({ title: s.title, url: s.url })),
     checks: { passed: quality.passed, score: quality.score, issues: quality.issues, warnings: quality.warnings },
     bannedClaimsChecked: profile.bannedClaims,
+    ...(quality.factsUsed ? { factsUsed: quality.factsUsed } : {}),
   };
 }
 
@@ -41,6 +44,13 @@ export function renderProof(p: ProofPack): string {
     '',
     `## Claims we never make`,
     ...(p.bannedClaimsChecked.length ? p.bannedClaimsChecked.map((c) => `- "${c}"`) : ['- None configured']),
+    ...(p.factsUsed
+      ? [
+          '',
+          '## Business facts relied on',
+          ...(p.factsUsed.length ? p.factsUsed.map((f) => `- ${f.label}: ${f.value} (confirmed ${f.verifiedAt})`) : ['- None. The article makes no claims that need confirmed facts.']),
+        ]
+      : []),
   ];
   return lines.join('\n') + '\n';
 }

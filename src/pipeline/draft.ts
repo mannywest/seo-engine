@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import type { FactsVault } from '../facts.js';
 import type { LlmProvider } from '../providers/llm.js';
 import type { ClientProfile, Draft, Source, Topic } from '../types.js';
 import { extractJson } from './plan.js';
@@ -15,6 +16,7 @@ export async function writeDraft(
   topic: Topic,
   sources: Source[],
   llm: LlmProvider,
+  vault?: FactsVault,
 ): Promise<Draft> {
   const system = [
     `You write articles for ${profile.name}. Tone: ${profile.tone}.`,
@@ -26,6 +28,7 @@ export async function writeDraft(
       .join('; ')}.`,
     'Use ONLY facts found in the provided sources. Do not invent statistics, clients, quotes or results.',
     `Never use these phrases: ${profile.bannedClaims.join('; ') || 'none'}.`,
+    ...(vault ? [vault.promptBlock()] : []),
   ].join('\n');
 
   const prompt = [

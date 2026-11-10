@@ -1,6 +1,7 @@
 import { mkdir, readdir, readFile, writeFile } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
 import { createConnector } from './connectors/index.js';
+import { FACT_KINDS, FactsVault, type FactKind } from './facts.js';
 import { History } from './history.js';
 import { buildReceipt } from './receipt.js';
 import { UsageLog } from './usage.js';
@@ -41,6 +42,12 @@ const USAGE = `seo-engine commands (all free to run except --llm anthropic):
 
   receipt <client.json> [--month YYYY-MM]
       Print the plain-English monthly work receipt for a client.
+
+  facts <client.json> [--add KIND --label TEXT --value TEXT] [--remove ID]
+      List, add or remove the client's confirmed business facts (hours, prices, services, areas, contact,
+      credentials, guarantees, policies). Articles may only state these about the business. Adding a fact
+      marks it as confirmed today, so only add what the business has actually told you.
+      KIND is one of: ${FACT_KINDS.join(', ')}. Write times like 8am-6pm so the guard can read them.
 
   run-all [--llm gemini|...] [--dry]
       What the scheduler runs: every clients/*.json that is due (by its articles-per-week setting),
@@ -241,6 +248,39 @@ async function cmdReceipt(target: string) {
   console.log(buildReceipt({ clientName: profile.name, month, plan: profile.plan, history: history.entries, usage: usage.forMonth(month) }));
 }
 
+async function cmdFacts(target: string) {
+  const profile = await loadProfile(target);
+  const vault = await FactsVault.load(profile.id);
+  const add = arg('add');
+  const remove = arg('remove');
+  if (add) {
+    const label = arg('label');
+    const value = arg('value');
+    if (!(FACT_KINDS as readonly string[]).includes(add) || !label || !value) {
+      console.log(`To add a fact: facts ${target} --add <${FACT_KINDS.join('|')}> --label "Opening hours" --value "Mon-Fri 8am-6pm"`);
+      process.exit(1);
+    }
+    const f = vault.upsert({ kind: add as FactKind, label, value });
+    await vault.save();
+    console.log(`Saved: ${f.label}: ${f.value} (marked as confirmed ${f.verifiedAt})\n`);
+  } else if (remove) {
+    if (!vault.remove(remove)) {
+      console.log(`No fact with id "${remove}". Ids are shown in the list below.`);
+      process.exit(1);
+    }
+    await vault.save();
+    console.log(`Removed ${remove}.\n`);
+  }
+  if (vault.isEmpty) {
+    console.log(`${profile.name}: no confirmed business facts yet. Until there are some, articles that state hours, prices, contact details, areas, credentials or guarantees are held for review.`);
+    return;
+  }
+  console.log(`${profile.name}: ${vault.facts.length} confirmed business fact${vault.facts.length === 1 ? '' : 's'}`);
+  for (const f of vault.facts) console.log(`  [${f.kind}] ${f.label}: ${f.value}  (confirmed ${f.verifiedAt})  id: ${f.id}`);
+  const stale = vault.stale();
+  if (stale.length) console.log(`\n${stale.length} fact(s) are over 6 months old and should be re-confirmed: ${stale.map((f) => f.label).join(', ')}.`);
+}
+
 async function main() {
   loadSecretsBlob();
   const [cmd, target] = process.argv.slice(2);
@@ -258,6 +298,7 @@ async function main() {
   else if (cmd === 'gsc') await cmdGsc(target);
   else if (cmd === 'site') await cmdSite(target);
   else if (cmd === 'receipt') await cmdReceipt(target);
+  else if (cmd === 'facts') await cmdFacts(target);
   else {
     console.log(USAGE);
     process.exit(1);

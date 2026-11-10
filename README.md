@@ -8,7 +8,7 @@ Everything runs free **except** the AI that writes the article text, and even th
 
 ```bash
 npm install
-npm run verify                                   # typecheck + 54 tests
+npm run verify                                   # typecheck + 84 tests
 
 # Write articles (placeholder text, no cost):
 npx tsx src/cli.ts run clients/plerosis.json --mock
@@ -19,6 +19,12 @@ npx tsx src/cli.ts run clients/plerosis.json --live --llm ollama --crawl   # als
 
 # Paid API instead of a local model (spends money):
 ANTHROPIC_API_KEY=... npx tsx src/cli.ts run clients/plerosis.json --live --llm anthropic
+
+# Business facts vault: what the business has confirmed about itself. Articles may state
+# hours, prices, contact details, areas, credentials and guarantees only if they are listed here.
+# Live runs hold back any article that states something unconfirmed.
+npx tsx src/cli.ts facts clients/plerosis.json
+npx tsx src/cli.ts facts clients/plerosis.json --add price --label "Boiler service" --value "£79"
 
 # Audit any site (technical, on-page, structured data, AI search):
 npx tsx src/cli.ts audit https://plerosis.com --out out/audit.md

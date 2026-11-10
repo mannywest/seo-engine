@@ -60,4 +60,6 @@ export interface QualityReport {
   issues: string[];
   /** Advice for the reviewer; never blocks publishing. */
   warnings: string[];
+  /** Confirmed business facts the article relied on. Only present when the answer guard ran. */
+  factsUsed?: { label: string; value: string; verifiedAt: string }[];
 }

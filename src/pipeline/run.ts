@@ -1,6 +1,7 @@
 import { mkdir, readdir, writeFile } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
 import type { Connector, PublishItem } from '../connectors/types.js';
+import type { FactsVault } from '../facts.js';
 import type { History } from '../history.js';
 import type { LlmProvider } from '../providers/llm.js';
 import type { SearchProvider } from '../providers/search.js';
@@ -20,6 +21,8 @@ export interface RunOptions {
   history?: History;
   /** If set, drafts that pass the quality check are delivered to the client's site. */
   connector?: Connector;
+  /** The client's confirmed business facts. When set, drafts may only state these about the business (the answer guard enforces it). */
+  vault?: FactsVault;
 }
 
 export interface RunResult {
@@ -50,8 +53,8 @@ export async function runPipeline(
   const results: RunResult[] = [];
   for (const topic of topics) {
     const sources = await gatherSources(topic, search);
-    const draft = await writeDraft(profile, topic, sources, llm);
-    const quality = checkDraft(draft, profile, { skipLength: opts.mock, existingSlugs: slugs });
+    const draft = await writeDraft(profile, topic, sources, llm, opts.vault);
+    const quality = checkDraft(draft, profile, { skipLength: opts.mock, existingSlugs: slugs, vault: opts.vault });
     const file = toMarkdownFile(draft, profile);
     const path = join(opts.outDir, `${file.slug}.md`);
     await mkdir(dirname(path), { recursive: true });
