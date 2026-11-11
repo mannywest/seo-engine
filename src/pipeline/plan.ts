@@ -3,6 +3,9 @@ import type { LlmProvider } from '../providers/llm.js';
 import type { ClientProfile, Topic } from '../types.js';
 import { slugify } from '../publish/markdown.js';
 import { jaccard, tokens } from '../seo/text.js';
+import { askForJson, toList } from './askJson.js';
+
+export { extractJson } from './askJson.js';
 
 const PlanSchema = z.object({
   topics: z.array(
@@ -10,17 +13,10 @@ const PlanSchema = z.object({
       title: z.string().min(5),
       keyword: z.string().min(2),
       intent: z.string(),
-      outline: z.array(z.string()).min(3),
+      outline: z.preprocess(toList, z.array(z.string()).min(3)),
     }),
   ),
 });
-
-export function extractJson(text: string): unknown {
-  const start = text.indexOf('{');
-  const end = text.lastIndexOf('}');
-  if (start === -1 || end <= start) throw new Error('Model reply contained no JSON object.');
-  return JSON.parse(text.slice(start, end + 1));
-}
 
 export async function planTopics(
   profile: ClientProfile,
@@ -42,8 +38,7 @@ export async function planTopics(
     `Do not repeat these existing topics (slugs): ${existingSlugs.join(', ') || 'none'}`,
   ].join('\n');
 
-  const raw = await llm.complete({ task: 'plan', system, prompt, maxTokens: 1500 });
-  const parsed = PlanSchema.parse(extractJson(raw));
+  const parsed = await askForJson(llm, { task: 'plan', system, prompt, maxTokens: 1500 }, PlanSchema, 'topic plan');
   const seen = new Set(existingSlugs);
   const topics: Topic[] = [];
   for (const t of parsed.topics) {

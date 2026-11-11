@@ -2,13 +2,13 @@ import { z } from 'zod';
 import type { FactsVault } from '../facts.js';
 import type { LlmProvider } from '../providers/llm.js';
 import type { ClientProfile, Draft, Source, Topic } from '../types.js';
-import { extractJson } from './plan.js';
+import { askForJson, toList } from './askJson.js';
 
 const DraftSchema = z.object({
   title: z.string().min(5),
   description: z.string().min(20),
   body: z.string().min(20),
-  tags: z.array(z.string()).default([]),
+  tags: z.preprocess(toList, z.array(z.string())).default([]),
 });
 
 export async function writeDraft(
@@ -40,7 +40,6 @@ export async function writeDraft(
     ...sources.map((s, i) => `[${i + 1}] ${s.title} (${s.url}): ${s.snippet}`),
   ].join('\n');
 
-  const raw = await llm.complete({ task: 'draft', system, prompt, maxTokens: 4000 });
-  const parsed = DraftSchema.parse(extractJson(raw));
+  const parsed = await askForJson(llm, { task: 'draft', system, prompt, maxTokens: 4000 }, DraftSchema, 'article draft');
   return { topic, sources, ...parsed };
 }
