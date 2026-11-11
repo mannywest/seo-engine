@@ -1,4 +1,4 @@
-import { HttpError, parseRetryAfter, withRetry, type RetryOptions } from '../retry.js';
+import { HttpError, isDailyQuota, parseRetryAfter, parseRetryHint, withRetry, type RetryOptions } from '../retry.js';
 import type { LlmProvider, LlmRequest } from './llm.js';
 
 /** The most room we will ask for when a reply keeps getting cut off. */
@@ -59,10 +59,13 @@ export class OpenAiCompatProvider implements LlmProvider {
         }),
       });
       if (!r.ok) {
+        const body = await r.text();
+        const daily = r.status === 429 && isDailyQuota(body);
         throw new HttpError(
           r.status,
-          `LLM service returned ${r.status}: ${(await r.text()).slice(0, 200)}`,
-          parseRetryAfter(r.headers?.get?.('retry-after')),
+          `LLM service returned ${r.status}${daily ? ' (daily quota used up)' : ''}: ${body.slice(0, 500)}`,
+          parseRetryAfter(r.headers?.get?.('retry-after')) ?? parseRetryHint(body),
+          !daily,
         );
       }
       return r;

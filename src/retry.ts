@@ -10,6 +10,8 @@ export class HttpError extends Error {
     readonly status: number,
     message: string,
     readonly retryAfterMs?: number,
+    /** False when trying again in a few seconds cannot help (for example a daily quota that is used up). */
+    readonly retryable = true,
   ) {
     super(message);
     this.name = 'HttpError';
@@ -46,6 +48,7 @@ function isNetworkError(e: unknown): boolean {
 }
 
 export function isRetryable(e: unknown): boolean {
+  if (e instanceof HttpError && !e.retryable) return false;
   const s = statusOf(e);
   return s !== undefined ? isRetryableStatus(s) : isNetworkError(e);
 }
@@ -57,6 +60,17 @@ export function parseRetryAfter(value: string | null | undefined, now = Date.now
   if (Number.isFinite(secs)) return Math.max(0, secs * 1000);
   const when = Date.parse(value);
   return Number.isNaN(when) ? undefined : Math.max(0, when - now);
+}
+
+/** Some services say how long to wait inside the error text ("Please retry in 12.3s" or "retryDelay": "12s"). */
+export function parseRetryHint(body: string): number | undefined {
+  const m = /retry in\s+([\d.]+)\s*s/i.exec(body) ?? /"retryDelay"\s*:\s*"([\d.]+)s"/.exec(body);
+  return m ? Math.round(Number(m[1]) * 1000) : undefined;
+}
+
+/** A quota that resets once a day: waiting seconds will not help. */
+export function isDailyQuota(body: string): boolean {
+  return /PerDay|per day/i.test(body);
 }
 
 const realSleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
@@ -73,6 +87,8 @@ export async function withRetry<T>(fn: () => Promise<T>, o: RetryOptions = {}): 
     } catch (e) {
       if (i >= attempts || !isRetryable(e)) throw e;
       const asked = e instanceof HttpError ? e.retryAfterMs : undefined;
+      // If the service asks for a longer wait than we are willing to give, trying again too soon only fails again.
+      if (asked !== undefined && asked > maxMs) throw e;
       // Doubling wait with a little randomness (50% to 100%) so many clients do not all retry together.
       const backoff = Math.min(maxMs, baseMs * 2 ** (i - 1)) * (0.5 + random() * 0.5);
       await sleep(Math.min(maxMs, asked ?? backoff));
