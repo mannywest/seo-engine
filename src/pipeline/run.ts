@@ -10,6 +10,7 @@ import type { ClientProfile, QualityReport } from '../types.js';
 import { buildProof, renderProof } from '../proof.js';
 import { toMarkdownFile } from '../publish/markdown.js';
 import { writeDraft } from './draft.js';
+import { improveReadability } from './readability.js';
 import { planTopics } from './plan.js';
 import { checkDraft } from './quality.js';
 import { gatherSources } from './research.js';
@@ -56,7 +57,9 @@ export async function runPipeline(
   const results: RunResult[] = [];
   for (const topic of topics) {
     const sources = await gatherSources(topic, search);
-    const draft = await writeDraft(profile, topic, sources, llm, opts.vault);
+    const written = await writeDraft(profile, topic, sources, llm, opts.vault);
+    // Live runs only: one optional plain-English rewrite when the article is hard to read.
+    const draft = opts.mock ? written : await improveReadability(written, llm);
     const quality = checkDraft(draft, profile, { skipLength: opts.mock, existingSlugs: slugs, vault: opts.vault });
     const file = toMarkdownFile(draft, profile);
     const path = join(opts.outDir, `${file.slug}.md`);
