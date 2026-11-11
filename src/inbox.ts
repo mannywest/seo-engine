@@ -14,7 +14,7 @@ import type { ClientProfile, Draft, QualityReport } from './types.js';
 export const INBOX_STATUS = ['waiting', 'approved', 'rejected', 'published', 'publish_failed'] as const;
 export type InboxStatus = (typeof INBOX_STATUS)[number];
 
-const ItemSchema = z.object({
+export const ItemSchema = z.object({
   /** The article's slug. */
   id: z.string().min(1),
   addedAt: z.string(),
