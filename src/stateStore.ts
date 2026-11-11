@@ -41,6 +41,14 @@ export function hostedSettings(env: Env = process.env): { url: string; key: stri
   return undefined;
 }
 
+/**
+ * The headers every Supabase request carries. Older JWT-style keys (eyJ...) go in both `apikey` and `Authorization`.
+ * New-style keys (sb_secret_..., sb_publishable_...) are not login tokens, so they go in `apikey` only.
+ */
+export function supabaseHeaders(key: string, extra: Record<string, string> = {}): Record<string, string> {
+  return { apikey: key, ...(key.startsWith('sb_') ? {} : { Authorization: `Bearer ${key}` }), 'Content-Type': 'application/json', ...extra };
+}
+
 export class FileEntryStore<T> implements EntryStore<T> {
   readonly lenient = true;
   constructor(private readonly path: string) {}
@@ -134,12 +142,7 @@ export class SupabaseEntryStore<T> implements EntryStore<T> {
   private async request(method: string, query: string, init: { body?: unknown; prefer?: string } = {}): Promise<unknown> {
     const res = await this.doFetch(query ? `${this.base}?${query}` : this.base, {
       method,
-      headers: {
-        apikey: this.o.key,
-        Authorization: `Bearer ${this.o.key}`,
-        'Content-Type': 'application/json',
-        ...(init.prefer ? { Prefer: init.prefer } : {}),
-      },
+      headers: supabaseHeaders(this.o.key, init.prefer ? { Prefer: init.prefer } : {}),
       ...(init.body !== undefined ? { body: JSON.stringify(init.body) } : {}),
     });
     const text = await res.text();

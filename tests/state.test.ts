@@ -5,7 +5,7 @@ import { describe, expect, it } from 'vitest';
 import { FactsVault } from '../src/facts.js';
 import { History, type HistoryEntry } from '../src/history.js';
 import { Ledger } from '../src/ledger.js';
-import { HostedConfigError, hostedSettings, StateError } from '../src/stateStore.js';
+import { HostedConfigError, hostedSettings, StateError, supabaseHeaders } from '../src/stateStore.js';
 import { MeteredProvider, UsageLog, CapReachedError } from '../src/usage.js';
 
 const URL_ = 'https://abcd1234.supabase.co';
@@ -286,5 +286,34 @@ describe('usage log in Supabase', () => {
   it('stops the run when the database cannot be read, rather than starting from zero usage', async () => {
     const { f } = fakeSupabase({ failWith: 503 });
     await expect(UsageLog.open('acme', { env: ENV, fetch: f })).rejects.toThrow(StateError);
+  });
+});
+
+describe('Supabase keys', () => {
+  it('sends an older JWT-style key in both headers', () => {
+    expect(supabaseHeaders('eyJhbGciOi.payload.sig')).toMatchObject({ apikey: 'eyJhbGciOi.payload.sig', Authorization: 'Bearer eyJhbGciOi.payload.sig' });
+  });
+
+  it('sends a new-style secret key in apikey only, because it is not a login token', () => {
+    const h = supabaseHeaders('sb_secret_abc123', { Prefer: 'return=minimal' });
+    expect(h.apikey).toBe('sb_secret_abc123');
+    expect(h).not.toHaveProperty('Authorization');
+    expect(h.Prefer).toBe('return=minimal');
+  });
+
+  it('uses that on the real requests of both the notebook and the inbox', async () => {
+    const seenHeaders: Record<string, string>[] = [];
+    const f = (async (_u: string | URL | Request, init?: RequestInit) => {
+      seenHeaders.push(init?.headers as Record<string, string>);
+      return new Response('[]', { status: 200 });
+    }) as typeof fetch;
+    await History.open('acme', { env: { SUPABASE_URL: URL_, SUPABASE_SERVICE_KEY: 'sb_secret_abc123' }, fetch: f });
+    const { SupabaseInboxStore } = await import('../src/inboxSupabase.js');
+    await new SupabaseInboxStore({ url: URL_, key: 'sb_secret_abc123', clientId: 'acme', fetch: f }).list();
+    expect(seenHeaders).toHaveLength(2);
+    for (const h of seenHeaders) {
+      expect(h.apikey).toBe('sb_secret_abc123');
+      expect(h).not.toHaveProperty('Authorization');
+    }
   });
 });

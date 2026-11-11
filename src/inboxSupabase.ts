@@ -1,3 +1,4 @@
+import { supabaseHeaders } from './stateStore.js';
 import { INBOX_STATUS, ItemSchema, type InboxItem, type InboxStore } from './inbox.js';
 
 /**
@@ -125,7 +126,7 @@ export class SupabaseInboxStore implements InboxStore {
   }
 
   private headers(extra: Record<string, string> = {}): Record<string, string> {
-    return { apikey: this.o.key, Authorization: `Bearer ${this.o.key}`, 'Content-Type': 'application/json', ...extra };
+    return supabaseHeaders(this.o.key, extra);
   }
 
   private async request(method: string, query: string, init: { body?: unknown; prefer?: string } = {}): Promise<unknown> {
