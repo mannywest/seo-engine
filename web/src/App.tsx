@@ -1,7 +1,10 @@
 import type { Session, SupabaseClient } from '@supabase/supabase-js';
 import { useCallback, useEffect, useMemo, useState } from 'react';
+import { ConnectScreen } from './Connect';
+import { readNotice } from './connectApi';
 import { DemoSource, LiveSource, type InboxSource } from './data';
 import { demoItems } from './demo';
+import { articleFileName, articleMarkdown, canTakeAway } from './share';
 import { itemsFor, parseBody, safeUrl, scoreTone, STATUS_LABEL, TABS, tabOf, timeAgo, wordCount, type Tab } from './text';
 import type { InboxItem } from './types';
 
@@ -51,9 +54,24 @@ export function LiveApp({ db }: { db: SupabaseClient }) {
     return () => data.subscription.unsubscribe();
   }, [db]);
   const source = useMemo(() => new LiveSource(db), [db]);
+  // Back from GitHub the address says what happened (?connect=pick, ?connect=error&reason=...). Read it once, then tidy the address.
+  const [notice] = useState(() => readNotice(window.location.search));
+  const [view, setView] = useState<'inbox' | 'connect'>(notice ? 'connect' : 'inbox');
+  useEffect(() => {
+    if (notice) window.history.replaceState({}, '', window.location.pathname);
+  }, [notice]);
   if (session === undefined) return <main className="shell"><Header /><p className="muted center">Loading…</p></main>;
   if (!session) return <SignIn db={db} />;
-  return <Inbox source={source} email={session.user.email ?? ''} onSignOut={() => void db.auth.signOut()} />;
+  const signOut = () => void db.auth.signOut();
+  if (view === 'connect') {
+    return (
+      <main className="shell">
+        <Header right={<div className="who"><button className="link" onClick={signOut}>Sign out</button></div>} />
+        <ConnectScreen db={db} {...(notice ? { notice } : {})} onBack={() => setView('inbox')} />
+      </main>
+    );
+  }
+  return <Inbox source={source} email={session.user.email ?? ''} onSignOut={signOut} onOpenConnect={() => setView('connect')} />;
 }
 
 function SignIn({ db }: { db: SupabaseClient }) {
@@ -91,7 +109,7 @@ function SignIn({ db }: { db: SupabaseClient }) {
   );
 }
 
-function Inbox({ source, email, onSignOut }: { source: InboxSource; email?: string; onSignOut?: () => void }) {
+function Inbox({ source, email, onSignOut, onOpenConnect }: { source: InboxSource; email?: string; onSignOut?: () => void; onOpenConnect?: () => void }) {
   const [items, setItems] = useState<InboxItem[] | null>(null);
   const [error, setError] = useState<string>();
   const [tab, setTab] = useState<Tab>('needs');
@@ -143,6 +161,7 @@ function Inbox({ source, email, onSignOut }: { source: InboxSource; email?: stri
     <main className="shell">
       <Header demo={source.mode === 'demo'} right={right} />
       {flash && <div className="flash" role="status">{flash}</div>}
+      {onOpenConnect && <button className="link" onClick={onOpenConnect}>Connect your website →</button>}
       <nav className="tabs" aria-label="Inbox sections">
         {TABS.map((t) => (
           <button key={t.id} className={t.id === tab ? 'tab on' : 'tab'} aria-pressed={t.id === tab} onClick={() => setTab(t.id)}>
@@ -188,7 +207,28 @@ function Review({ item, source, onBack, onDecided }: { item: InboxItem; source: 
   const [note, setNote] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string>();
+  const [copied, setCopied] = useState(false);
   const waiting = item.status === 'waiting';
+
+  async function copyText() {
+    try {
+      await navigator.clipboard.writeText(articleMarkdown(item));
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2500);
+    } catch {
+      setError('Could not copy. Tap Download instead.');
+    }
+  }
+  function download() {
+    const url = URL.createObjectURL(new Blob([articleMarkdown(item)], { type: 'text/markdown;charset=utf-8' }));
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = articleFileName(item);
+    document.body.append(a);
+    a.click();
+    a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+  }
   const changed = editing && text !== item.body;
 
   async function run(kind: 'approve' | 'reject') {
@@ -291,6 +331,16 @@ function Review({ item, source, onBack, onDecided }: { item: InboxItem; source: 
             {item.note && <p className="small">Note: {item.note}</p>}
             {item.deliveryNote && <p className="small">{item.deliveryNote}</p>}
             {item.deliveredTo && (safeUrl(item.deliveredTo) ? <p className="small"><a href={safeUrl(item.deliveredTo)} target="_blank" rel="noopener noreferrer">View it live</a></p> : <p className="small">Delivered to {item.deliveredTo}</p>)}
+          </section>
+        )}
+        {canTakeAway(item.status) && (
+          <section className="card">
+            <h2>Use it somewhere else</h2>
+            <p className="small muted">If your website is not connected, or it is not on GitHub, copy the article or download it as a file and add it to your site yourself.</p>
+            <div className="actions">
+              <button className="btn" onClick={() => void copyText()}>{copied ? 'Copied ✓' : 'Copy text'}</button>
+              <button className="btn" onClick={download}>Download</button>
+            </div>
           </section>
         )}
         {error && <p className="error" role="alert">{error}</p>}

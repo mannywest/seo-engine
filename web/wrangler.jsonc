@@ -1,9 +1,20 @@
 {
-  // Cloudflare config for the approval inbox web page (the built page is web/dist).
+  // Cloudflare config for the approval inbox. The built page is web/dist; the Worker in worker/ answers the /api/ addresses
+  // behind "Connect your website" and hands everything else to the page.
   "name": "plerosis-inbox",
+  "main": "worker/index.ts",
   "compatibility_date": "2026-11-01",
   "assets": {
     "directory": "./dist",
-    "not_found_handling": "single-page-application"
+    "binding": "ASSETS",
+    "not_found_handling": "single-page-application",
+    // Without this, the page would answer /api/ addresses itself instead of the Worker.
+    "run_worker_first": ["/api/*"]
+  },
+  "vars": {
+    // The project's public address (not a secret; the same one the page is built with).
+    "SUPABASE_URL": "https://ohuemhyoueljirnvysjk.supabase.co"
   }
+  // The one secret, SUPABASE_SERVICE_KEY, is added in the Cloudflare dashboard (Settings > Variables and Secrets > Add > Secret).
+  // It is never written in a file.
 }

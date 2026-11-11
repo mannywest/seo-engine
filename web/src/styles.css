@@ -90,3 +90,15 @@ textarea { font-family: ui-monospace, Menlo, monospace; font-size: .9rem; line-h
 .actions { display: flex; gap: 10px; }
 .confirm p { margin-bottom: 8px; }
 .confirm .actions { margin-top: 10px; }
+
+/* Connect your website */
+ol.plain { margin: 0 0 12px; padding-left: 22px; } ol.plain li { margin-bottom: 6px; }
+.opts, .pick { list-style: none; padding-left: 0 !important; }
+.opts > li { margin-bottom: 14px; }
+.opts .btn { width: 100%; flex: none; }
+.soon { display: flex; justify-content: space-between; align-items: center; min-height: 44px; border-top: 1px solid var(--line); padding-top: 8px; color: var(--muted); }
+.chip.off { background: var(--ground); color: var(--muted); border: 1px solid var(--line); }
+.opt { display: flex; gap: 12px; align-items: flex-start; min-height: 44px; padding: 10px 0; cursor: pointer; }
+input[type="radio"] { width: 22px; height: 22px; min-height: 0; padding: 0; margin-top: 2px; flex: none; accent-color: var(--accent); }
+code { font-size: .875em; background: var(--ground); border: 1px solid var(--line); border-radius: 6px; padding: 1px 5px; overflow-wrap: anywhere; }
+.confirm p { margin-top: 12px; }
