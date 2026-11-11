@@ -43,7 +43,7 @@ export function rankDocs(docs: Doc[], query: string, limit: number, snippetChars
   return scored
     .sort((a, b) => b.score - a.score)
     .slice(0, limit)
-    .map(({ doc, best }) => ({ title: doc.title, url: doc.url, snippet: best.join(' ').slice(0, snippetChars) }));
+    .map(({ doc, best }) => ({ title: doc.title, url: doc.url, snippet: best.join(' ').slice(0, snippetChars), fullText: doc.paragraphs.join(' ') }));
 }
 
 /** Your own notes: any .md or .txt files in a folder (case notes, transcripts, service descriptions). */

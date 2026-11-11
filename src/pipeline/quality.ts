@@ -63,8 +63,8 @@ export function checkDraft(
   // The business's own confirmed facts count as a source, so a price taken from the vault is not flagged as invented.
   const sources = opts.vault && !opts.vault.isEmpty ? [...draft.sources, opts.vault.asSource()] : draft.sources;
 
-  // Any statistic or money figure must appear in a source snippet, otherwise it may be invented.
-  const sourceText = normalise(sources.map((s) => `${s.title} ${s.snippet}`).join(' '));
+  // Any statistic or money figure must appear in the source text, otherwise it may be invented.
+  const sourceText = normalise(sources.map((s) => `${s.title} ${s.fullText ?? s.snippet}`).join(' '));
   // The pattern can swallow a trailing full stop or line break ("£79.\n"), so trim them before comparing.
   for (const fig of new Set((body.match(FIGURE) ?? []).map((f) => f.replace(/[\s.,]+$/, '')))) {
     if (!sourceText.includes(normalise(fig))) issues.push(`Figure "${fig}" is not supported by any source.`);
@@ -106,7 +106,7 @@ export function checkDraft(
  */
 export function unsupportedClaims(draft: Draft): string[] {
   const plain = draft.body.replace(/^#{1,6}\s.*$/gm, ' ').replace(/\[([^\]]*)\]\([^)]*\)/g, '$1').replace(/[*_`>]/g, '');
-  const sourceTokens = draft.sources.map((s) => new Set(tokens(`${s.title} ${s.snippet}`)));
+  const sourceTokens = draft.sources.map((s) => new Set(tokens(`${s.title} ${s.fullText ?? s.snippet}`)));
   const out: string[] = [];
   for (const s of sentences(plain)) {
     if (!/\d/.test(s)) continue;
