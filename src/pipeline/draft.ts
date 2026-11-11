@@ -22,6 +22,7 @@ export async function writeDraft(
     `You write articles for ${profile.name}. Tone: ${profile.tone}.`,
     'Reply with JSON only: {"title","description","body","tags"}. The body is markdown.',
     `Length ${profile.wordRange.min}-${profile.wordRange.max} words. Title under 65 characters; description 70-160 characters.`,
+    `The description must contain the exact target keyword "${topic.keyword}", worded naturally.`,
     'Start with a direct, answer-first paragraph. Use ## headings, end with a "## Frequently asked questions" section.',
     `Include at least ${profile.minInternalLinks} links to these pages, using relative URLs: ${profile.internalLinks
       .map((l) => `${l.label} (${l.url})`)

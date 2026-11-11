@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { acceptableRewrite, improveReadability } from '../src/pipeline/readability.js';
 import { checkDraft, unsupportedClaims } from '../src/pipeline/quality.js';
 import { rankDocs } from '../src/providers/sources.js';
+import { writeDraft } from '../src/pipeline/draft.js';
 import type { Draft } from '../src/types.js';
 
 const hard = 'Organisational implementation necessitates comprehensive operationalisation of interdependent methodological considerations notwithstanding administrative complexity. '.repeat(4);
@@ -29,6 +30,34 @@ describe('full page text for figure checks', () => {
   it('claim check also uses the full text', () => {
     const d = draftOf('The invoices pass at 91 percent confidence every single day.', [{ title: 'T', url: 'u', snippet: 'x', fullText: 'invoices pass confidence every single day percent' }]);
     expect(unsupportedClaims(d)).toEqual([]);
+  });
+});
+
+describe('claim check ignores list scaffolding', () => {
+  const src = [{ title: 'T', url: 'u', snippet: 'x', fullText: 'unrelated text only' }];
+  it('does not flag a lead-in sentence followed by a numbered list', () => {
+    const body = 'When determining where to place approval gates, consider these factors:\n\n1. Risk of harm\n2. Cost of a mistake';
+    expect(unsupportedClaims(draftOf(body, src))).toEqual([]);
+  });
+  it('still flags a real unsupported figure', () => {
+    const body = 'Our customers see a 73 percent increase in invoice approvals every single month.';
+    expect(unsupportedClaims(draftOf(body, src)).length).toBe(1);
+  });
+});
+
+describe('writing prompt asks for the keyword in the description', () => {
+  it('names the exact keyword', async () => {
+    let seen = '';
+    const llm = {
+      name: 'x',
+      complete: async (r: { system: string }) => {
+        seen = r.system;
+        return JSON.stringify({ title: 'A good title', description: 'd'.repeat(80), body: 'Body text here that is long enough.', tags: [] });
+      },
+    };
+    const topic = { title: 't', slug: 's', keyword: 'approval gates for ai', intent: 'i', outline: [] };
+    await writeDraft({ name: 'n', tone: 't', wordRange: { min: 1, max: 9 }, minInternalLinks: 0, internalLinks: [], bannedClaims: [] } as never, topic, [], llm as never);
+    expect(seen).toContain('description must contain the exact target keyword "approval gates for ai"');
   });
 });
 

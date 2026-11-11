@@ -105,11 +105,16 @@ export function checkDraft(
  * snippet. Not proof, but it catches invented specifics without an extra AI call.
  */
 export function unsupportedClaims(draft: Draft): string[] {
-  const plain = draft.body.replace(/^#{1,6}\s.*$/gm, ' ').replace(/\[([^\]]*)\]\([^)]*\)/g, '$1').replace(/[*_`>]/g, '');
+  const plain = draft.body
+    .replace(/^#{1,6}\s.*$/gm, ' ')
+    .replace(/^\s*(?:\d+[.)]|[-*+])\s+/gm, '') // list markers like "1." are not figures
+    .replace(/\[([^\]]*)\]\([^)]*\)/g, '$1')
+    .replace(/[*_`>]/g, '');
   const sourceTokens = draft.sources.map((s) => new Set(tokens(`${s.title} ${s.fullText ?? s.snippet}`)));
   const out: string[] = [];
   for (const s of sentences(plain)) {
     if (!/\d/.test(s)) continue;
+    if (s.endsWith(':')) continue; // a lead-in to a list is not a claim
     const t = tokens(s).filter((w) => !/^\d+$/.test(w));
     if (t.length < 4) continue;
     const best = Math.max(0, ...sourceTokens.map((set) => t.filter((w) => set.has(w)).length / t.length));
