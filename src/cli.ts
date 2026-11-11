@@ -3,6 +3,7 @@ import { dirname, join } from 'node:path';
 import { createConnector } from './connectors/index.js';
 import { FACT_KINDS, FactsVault, type FactKind } from './facts.js';
 import { History } from './history.js';
+import { decide, FileInboxStore, InboxError, publishApproved } from './inbox.js';
 import { Ledger, revertChange } from './ledger.js';
 import { buildReceipt } from './receipt.js';
 import { UsageLog } from './usage.js';
@@ -57,6 +58,11 @@ const USAGE = `seo-engine commands (all free to run except --llm anthropic):
       WordPress posts go to the trash, GitHub changes become a pull request). --force undoes it anyway.
       Needs the same access (environment variables) as publishing. Articles sent by webhook cannot be taken back from here.
 
+  inbox <client.json> [list | show ID | approve ID | reject ID | publish] [--by NAME] [--note TEXT] [--edit-file PATH] [--publish]
+      The approval inbox. Drafts that need a person wait here (turn it on with "inbox": true under "publish" in the client file).
+      approve marks one ready (--edit-file replaces the text with your corrected version; --publish sends it straight away).
+      publish sends every approved article live through the client's connector and records it in the ledger.
+
   run-all [--llm gemini|...] [--dry]
       What the scheduler runs: every clients/*.json that is due (by its articles-per-week setting),
       one failure never stops the others, failures are alerted. Needs --live-style setup (an AI key).
@@ -99,7 +105,7 @@ async function cmdRun(profilePath: string) {
   });
   if (!results.length) console.log('No new drafts written: the planned topics already exist. (In live mode, also check there are notes in the sources folder or use --crawl.)');
   for (const r of results) {
-    console.log(`${r.quality.passed ? 'PASS' : 'REVIEW'}  ${r.path}  (score ${r.quality.score})`);
+    console.log(`${r.quality.passed ? 'PASS' : 'REVIEW'}  ${r.path}  (score ${r.quality.score})${r.waitingForApproval ? '  [in the approval inbox]' : ''}`);
     for (const i of r.quality.issues) console.log(`   - ${i}`);
     for (const w of r.quality.warnings) console.log(`   ~ ${w}`);
     if (r.deliveredTo) console.log(`   delivered: ${r.deliveredTo}${r.deliveryNote ? ` (${r.deliveryNote})` : ''}`);
@@ -331,6 +337,53 @@ async function cmdLedger(target: string) {
   }
 }
 
+const INBOX_LABEL = { waiting: 'waiting', approved: 'approved', rejected: 'rejected', published: 'published', publish_failed: 'approved, delivery failed' } as const;
+
+async function cmdInbox(target: string) {
+  const profile = await loadProfile(target);
+  const store = await FileInboxStore.load(profile.id);
+  const sub = process.argv[4] ?? 'list';
+  const id = process.argv[5];
+  const publish = async () => {
+    if (!profile.connector) throw new InboxError('This client has no connector, so there is nowhere to publish to.');
+    const ledger = await Ledger.load(profile.id);
+    const results = await publishApproved(store, profile, createConnector(profile.connector), ledger);
+    await ledger.save();
+    if (!results.length) console.log('Nothing approved is waiting to be published.');
+    for (const r of results) console.log(`${r.ok ? 'published' : 'FAILED   '}  ${r.id}  ${r.note}${r.url ? `  ${r.url}` : ''}`);
+    if (results.some((r) => !r.ok)) process.exitCode = 1;
+  };
+  try {
+    if (sub === 'list') {
+      const items = await store.list();
+      if (!items.length) return console.log(`${profile.name}: the inbox is empty.`);
+      for (const i of items) console.log(`[${INBOX_LABEL[i.status]}]  ${i.id}  "${i.title}"  (score ${i.quality.score})  ${i.reason}`);
+    } else if (sub === 'show') {
+      const i = id ? await store.get(id) : undefined;
+      if (!i) throw new InboxError(`Give the id of an article in the inbox. Run "inbox ${target} list" to see them.`);
+      console.log(`${i.title}\n[${INBOX_LABEL[i.status]}] ${i.reason}\n`);
+      for (const x of i.quality.issues) console.log(`  problem: ${x}`);
+      for (const x of i.quality.warnings) console.log(`  note: ${x}`);
+      console.log(`\nSources:\n${i.sources.map((s) => `  ${s.title} (${s.url})`).join('\n') || '  none'}\n\n${i.body}`);
+    } else if (sub === 'approve' || sub === 'reject') {
+      if (!id) throw new InboxError(`Give the id of an article, for example: inbox ${target} ${sub} my-article`);
+      const edit = arg('edit-file');
+      const item = await decide(store, id, sub, {
+        by: arg('by', process.env.USER ?? 'operator')!,
+        note: arg('note'),
+        ...(edit && sub === 'approve' ? { editedBody: await readFile(edit, 'utf8') } : {}),
+      });
+      console.log(`${item.id}: ${INBOX_LABEL[item.status]}${item.edited && item.status !== 'rejected' ? ' (text edited)' : ''}.`);
+      if (sub === 'approve' && flag('publish')) await publish();
+    } else if (sub === 'publish') await publish();
+    else console.log(USAGE);
+  } catch (e) {
+    if (!(e instanceof InboxError)) throw e;
+    console.log(e.message);
+    process.exitCode = 1;
+  }
+}
+
 async function main() {
   loadSecretsBlob();
   const [cmd, target] = process.argv.slice(2);
@@ -351,6 +404,7 @@ async function main() {
   else if (cmd === 'receipt') await cmdReceipt(target);
   else if (cmd === 'facts') await cmdFacts(target);
   else if (cmd === 'ledger') await cmdLedger(target);
+  else if (cmd === 'inbox') await cmdInbox(target);
   else {
     console.log(USAGE);
     process.exit(1);
