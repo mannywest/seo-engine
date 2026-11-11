@@ -123,7 +123,7 @@ async function cmdRunAll() {
   for (const f of files) {
     try {
       const profile = await loadProfile(join('clients', f));
-      const history = await History.load(profile.id);
+      const history = await History.open(profile.id);
       if (!history.isDue(profile.publish.cadencePerWeek)) {
         console.log(`skip  ${profile.id}: not due yet`);
         continue;
@@ -278,14 +278,14 @@ function loadSecretsBlob() {
 async function cmdReceipt(target: string) {
   const profile = await loadProfile(target);
   const month = arg('month') ?? new Date().toISOString().slice(0, 7);
-  const history = await History.load(profile.id);
-  const usage = await UsageLog.load(profile.id);
+  const history = await History.open(profile.id);
+  const usage = await UsageLog.open(profile.id);
   console.log(buildReceipt({ clientName: profile.name, month, plan: profile.plan, history: history.entries, usage: usage.forMonth(month) }));
 }
 
 async function cmdFacts(target: string) {
   const profile = await loadProfile(target);
-  const vault = await FactsVault.load(profile.id);
+  const vault = await FactsVault.open(profile.id);
   const add = arg('add');
   const remove = arg('remove');
   if (add) {
@@ -320,7 +320,7 @@ const LEDGER_STATUS = { applied: 'done', reverted: 'undone', revert_pending: 'un
 
 async function cmdLedger(target: string) {
   const profile = await loadProfile(target);
-  const ledger = await Ledger.load(profile.id);
+  const ledger = await Ledger.open(profile.id);
   const id = arg('revert');
   if (id) {
     const connector = profile.connector ? createConnector(profile.connector) : undefined;
@@ -345,7 +345,7 @@ const INBOX_LABEL = { waiting: 'waiting', approved: 'approved', rejected: 'rejec
 /** Sends one client's approved articles out through its connector and records them in the change ledger. */
 async function publishFor(profile: ClientProfile, store: InboxStore) {
   if (!profile.connector) throw new InboxError('This client has no connector, so there is nowhere to publish to.');
-  const ledger = await Ledger.load(profile.id);
+  const ledger = await Ledger.open(profile.id);
   const results = await publishApproved(store, profile, createConnector(profile.connector), ledger);
   await ledger.save();
   if (!results.length) console.log(`${profile.name}: nothing approved is waiting to be published.`);

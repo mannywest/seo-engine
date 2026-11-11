@@ -1,6 +1,6 @@
-import { mkdir, readFile, writeFile } from 'node:fs/promises';
-import { dirname, join } from 'node:path';
+import { join } from 'node:path';
 import { z } from 'zod';
+import { FileEntryStore, hostedStore, type EntryStore, type OpenOptions } from './stateStore.js';
 import type { Source } from './types.js';
 
 export const FACT_KINDS = ['hours', 'price', 'service', 'area', 'credential', 'guarantee', 'contact', 'policy', 'other'] as const;
@@ -34,24 +34,35 @@ export class FactsVault {
   constructor(
     public facts: Fact[],
     private path: string,
+    private store?: EntryStore<Fact>,
   ) {}
 
-  /** A missing file is an empty vault. A file that exists but is invalid is an error, never silently ignored. */
-  static async load(clientId: string, dataDir = 'data'): Promise<FactsVault> {
-    const path = join(dataDir, clientId, 'facts.json');
-    let raw: string;
-    try {
-      raw = await readFile(path, 'utf8');
-    } catch (e) {
-      if ((e as NodeJS.ErrnoException).code === 'ENOENT') return new FactsVault([], path);
-      throw e;
-    }
-    const parsed = FileSchema.safeParse(JSON.parse(raw));
+  /** Nothing stored is an empty vault. Something stored that is invalid is an error, never silently ignored. */
+  static async load(clientId: string, dataDir = 'data', store?: EntryStore<Fact>): Promise<FactsVault> {
+    const s = store ?? new FileEntryStore<Fact>(join(dataDir, clientId, 'facts.json'));
+    const raw = await s.read();
+    if (raw === undefined) return new FactsVault([], s.where, s);
+    const parsed = FileSchema.safeParse(raw);
     if (!parsed.success) {
       const first = parsed.error.issues[0];
-      throw new Error(`${path} is not a valid facts file: ${first?.path.join('.') ?? ''} ${first?.message ?? ''}`.trim());
+      throw new Error(`${s.where} is not a valid facts file: ${first?.path.join('.') ?? ''} ${first?.message ?? ''}`.trim());
     }
-    return new FactsVault(parsed.data, path);
+    return new FactsVault(parsed.data, s.where, s);
+  }
+
+  /** The hosted vault (Supabase) when SUPABASE_URL and SUPABASE_SERVICE_KEY are both set, otherwise the local file. */
+  static async open(clientId: string, o: OpenOptions = {}): Promise<FactsVault> {
+    return FactsVault.load(
+      clientId,
+      o.dataDir,
+      hostedStore<Fact>(clientId, o, {
+        table: 'facts',
+        keyOf: (f) => f.id,
+        prune: true,
+        order: 'kind.asc,id.asc',
+        indexColumns: (f) => ({ kind: f.kind, verified_at: f.verifiedAt }),
+      }),
+    );
   }
 
   get isEmpty(): boolean {
@@ -110,8 +121,7 @@ export class FactsVault {
   }
 
   async save() {
-    await mkdir(dirname(this.path), { recursive: true });
     const sorted = [...this.facts].sort((a, b) => a.kind.localeCompare(b.kind) || a.label.localeCompare(b.label));
-    await writeFile(this.path, JSON.stringify(sorted, null, 2) + '\n', 'utf8');
+    await (this.store ?? new FileEntryStore<Fact>(this.path)).write(sorted);
   }
 }

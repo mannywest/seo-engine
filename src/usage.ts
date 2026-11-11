@@ -1,6 +1,6 @@
-import { mkdir, readFile, writeFile } from 'node:fs/promises';
-import { dirname, join } from 'node:path';
+import { join } from 'node:path';
 import type { LlmProvider, LlmRequest } from './providers/llm.js';
+import { FileEntryStore, hostedStore, StateError, type EntryStore, type OpenOptions } from './stateStore.js';
 
 export interface UsageEntry {
   at: string;
@@ -21,15 +21,37 @@ export class UsageLog {
   constructor(
     public entries: UsageEntry[],
     private path: string,
+    private store?: EntryStore<UsageEntry>,
   ) {}
 
-  static async load(clientId: string, dataDir = 'data'): Promise<UsageLog> {
-    const path = join(dataDir, clientId, 'usage.json');
+  /** Loads from the given store, or the local file data/<client>/usage.json. */
+  static async load(clientId: string, dataDir = 'data', store?: EntryStore<UsageEntry>): Promise<UsageLog> {
+    const s = store ?? new FileEntryStore<UsageEntry>(join(dataDir, clientId, 'usage.json'));
+    let raw: unknown[] | undefined;
     try {
-      return new UsageLog(JSON.parse(await readFile(path, 'utf8')) as UsageEntry[], path);
-    } catch {
-      return new UsageLog([], path);
+      raw = await s.read();
+    } catch (e) {
+      // A damaged local file starts a fresh log, as before. A hosted failure must stop the run: an empty log would bypass the monthly cap.
+      if (!s.lenient) throw e;
+      raw = undefined;
     }
+    if (raw !== undefined && !s.lenient && !raw.every(isUsageEntry)) {
+      throw new StateError(`${s.where} holds an entry that is not a valid usage entry.`);
+    }
+    return new UsageLog(Array.isArray(raw) ? (raw as UsageEntry[]) : [], s.where, s);
+  }
+
+  /** The hosted log (Supabase) when SUPABASE_URL and SUPABASE_SERVICE_KEY are both set, otherwise the local file. */
+  static async open(clientId: string, o: OpenOptions = {}): Promise<UsageLog> {
+    return UsageLog.load(
+      clientId,
+      o.dataDir,
+      hostedStore<UsageEntry>(clientId, o, {
+        table: 'usage_entries',
+        order: 'id.asc',
+        indexColumns: (e) => ({ at: e.at }),
+      }),
+    );
   }
 
   add(e: UsageEntry) {
@@ -46,9 +68,13 @@ export class UsageLog {
   }
 
   async save() {
-    await mkdir(dirname(this.path), { recursive: true });
-    await writeFile(this.path, JSON.stringify(this.entries, null, 2) + '\n', 'utf8');
+    await (this.store ?? new FileEntryStore<UsageEntry>(this.path)).write(this.entries);
   }
+}
+
+function isUsageEntry(e: unknown): e is UsageEntry {
+  const x = e as Partial<UsageEntry> | null;
+  return !!x && typeof x === 'object' && typeof x.at === 'string' && typeof x.inputTokens === 'number' && typeof x.outputTokens === 'number';
 }
 
 /** Wraps any provider: records every call and refuses new ones once the monthly token cap is reached. */

@@ -1,5 +1,5 @@
-import { mkdir, readFile, writeFile } from 'node:fs/promises';
-import { dirname, join } from 'node:path';
+import { join } from 'node:path';
+import { FileEntryStore, hostedStore, StateError, type EntryStore, type OpenOptions } from './stateStore.js';
 
 export interface HistoryEntry {
   slug: string;
@@ -17,15 +17,39 @@ export class History {
   constructor(
     public entries: HistoryEntry[],
     private path: string,
+    private store?: EntryStore<HistoryEntry>,
   ) {}
 
-  static async load(clientId: string, dataDir = 'data'): Promise<History> {
-    const path = join(dataDir, clientId, 'history.json');
+  /** Loads from the given store, or the local file data/<client>/history.json. */
+  static async load(clientId: string, dataDir = 'data', store?: EntryStore<HistoryEntry>): Promise<History> {
+    const s = store ?? new FileEntryStore<HistoryEntry>(join(dataDir, clientId, 'history.json'));
+    let raw: unknown[] | undefined;
     try {
-      return new History(JSON.parse(await readFile(path, 'utf8')) as HistoryEntry[], path);
-    } catch {
-      return new History([], path);
+      raw = await s.read();
+    } catch (e) {
+      // A damaged local file starts a fresh history, as before. A hosted failure must stop the run: an empty history would repeat topics.
+      if (!s.lenient) throw e;
+      raw = undefined;
     }
+    if (raw !== undefined && !s.lenient && !raw.every(isHistoryEntry)) {
+      throw new StateError(`${s.where} holds an entry that is not a valid history entry.`);
+    }
+    return new History(Array.isArray(raw) ? (raw as HistoryEntry[]) : [], s.where, s);
+  }
+
+  /** The hosted history (Supabase) when SUPABASE_URL and SUPABASE_SERVICE_KEY are both set, otherwise the local file. */
+  static async open(clientId: string, o: OpenOptions = {}): Promise<History> {
+    return History.load(
+      clientId,
+      o.dataDir,
+      hostedStore<HistoryEntry>(clientId, o, {
+        table: 'history_entries',
+        keyColumn: 'slug',
+        keyOf: (e) => e.slug,
+        order: 'created_at.asc,slug.asc',
+        indexColumns: (e) => ({ created_at: e.createdAt }),
+      }),
+    );
   }
 
   slugs(): string[] {
@@ -51,7 +75,11 @@ export class History {
   }
 
   async save() {
-    await mkdir(dirname(this.path), { recursive: true });
-    await writeFile(this.path, JSON.stringify(this.entries, null, 2) + '\n', 'utf8');
+    await (this.store ?? new FileEntryStore<HistoryEntry>(this.path)).write(this.entries);
   }
+}
+
+function isHistoryEntry(e: unknown): e is HistoryEntry {
+  const x = e as Partial<HistoryEntry> | null;
+  return !!x && typeof x === 'object' && typeof x.slug === 'string' && typeof x.createdAt === 'string' && typeof x.title === 'string';
 }

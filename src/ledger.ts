@@ -1,7 +1,7 @@
-import { mkdir, readFile, writeFile } from 'node:fs/promises';
-import { dirname, join } from 'node:path';
+import { join } from 'node:path';
 import { z } from 'zod';
 import type { Connector, PublishContext, PublishResult, RevertContext } from './connectors/types.js';
+import { FileEntryStore, hostedStore, type EntryStore, type OpenOptions } from './stateStore.js';
 
 const EntrySchema = z.object({
   id: z.string().min(1),
@@ -34,24 +34,34 @@ export class Ledger {
   constructor(
     public entries: LedgerEntry[],
     private path: string,
+    private store?: EntryStore<LedgerEntry>,
   ) {}
 
-  /** A missing file is an empty ledger. A file that exists but is invalid is an error, never silently ignored. */
-  static async load(clientId: string, dataDir = 'data'): Promise<Ledger> {
-    const path = join(dataDir, clientId, 'ledger.json');
-    let raw: string;
-    try {
-      raw = await readFile(path, 'utf8');
-    } catch (e) {
-      if ((e as NodeJS.ErrnoException).code === 'ENOENT') return new Ledger([], path);
-      throw e;
-    }
-    const parsed = FileSchema.safeParse(JSON.parse(raw));
+  /** Nothing stored is an empty ledger. Something stored that is invalid is an error, never silently ignored. */
+  static async load(clientId: string, dataDir = 'data', store?: EntryStore<LedgerEntry>): Promise<Ledger> {
+    const s = store ?? new FileEntryStore<LedgerEntry>(join(dataDir, clientId, 'ledger.json'));
+    const raw = await s.read();
+    if (raw === undefined) return new Ledger([], s.where, s);
+    const parsed = FileSchema.safeParse(raw);
     if (!parsed.success) {
       const first = parsed.error.issues[0];
-      throw new Error(`${path} is not a valid change ledger: ${first?.path.join('.') ?? ''} ${first?.message ?? ''}`.trim());
+      throw new Error(`${s.where} is not a valid change ledger: ${first?.path.join('.') ?? ''} ${first?.message ?? ''}`.trim());
     }
-    return new Ledger(parsed.data, path);
+    return new Ledger(parsed.data, s.where, s);
+  }
+
+  /** The hosted ledger (Supabase) when SUPABASE_URL and SUPABASE_SERVICE_KEY are both set, otherwise the local file. */
+  static async open(clientId: string, o: OpenOptions = {}): Promise<Ledger> {
+    return Ledger.load(
+      clientId,
+      o.dataDir,
+      hostedStore<LedgerEntry>(clientId, o, {
+        table: 'ledger_entries',
+        keyOf: (e) => e.id,
+        order: 'at.asc,id.asc',
+        indexColumns: (e) => ({ at: e.at, status: e.status }),
+      }),
+    );
   }
 
   get(id: string): LedgerEntry | undefined {
@@ -68,8 +78,7 @@ export class Ledger {
   }
 
   async save() {
-    await mkdir(dirname(this.path), { recursive: true });
-    await writeFile(this.path, JSON.stringify(this.entries, null, 2) + '\n', 'utf8');
+    await (this.store ?? new FileEntryStore<LedgerEntry>(this.path)).write(this.entries);
   }
 }
 

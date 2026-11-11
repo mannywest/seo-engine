@@ -146,3 +146,56 @@ drop trigger if exists inbox_items_guard on public.inbox_items;
 create trigger inbox_items_guard
   before update on public.inbox_items
   for each row execute function public.inbox_items_guard();
+
+-- ---------------------------------------------------------------------------------------------
+-- The engine's notebook (src/stateStore.ts). On GitHub Actions the engine's local files vanish when a run
+-- ends, so what it has written, every change it made to a site, the facts a business confirmed and AI usage
+-- are kept here instead. Each row holds the whole entry in `data`, plus a few plain columns for searching.
+-- Engine only: row-level security is on and there is deliberately NO policy, so a logged-in person (the web
+-- app) can read none of this. The engine's service key bypasses row-level security.
+-- ---------------------------------------------------------------------------------------------
+
+-- Every article written, so topics never repeat and plan article caps hold.
+create table if not exists public.history_entries (
+  client_id   text not null references public.clients (id) on delete cascade,
+  slug        text not null,
+  created_at  timestamptz not null,
+  data        jsonb not null,                    -- HistoryEntry in src/history.ts
+  primary key (client_id, slug)
+);
+create index if not exists history_entries_created_idx on public.history_entries (client_id, created_at);
+
+-- Every change made to a client's site, with what is needed to take it back (the "undo" list).
+create table if not exists public.ledger_entries (
+  client_id   text not null references public.clients (id) on delete cascade,
+  id          text not null,                     -- the id an inbox item's ledger_id points to
+  at          timestamptz not null,
+  status      text not null,
+  data        jsonb not null,                    -- LedgerEntry in src/ledger.ts
+  primary key (client_id, id)
+);
+create index if not exists ledger_entries_at_idx on public.ledger_entries (client_id, at);
+
+-- What the business has confirmed about itself (hours, prices, services...). Drafts may state only these.
+create table if not exists public.facts (
+  client_id    text not null references public.clients (id) on delete cascade,
+  id           text not null,
+  kind         text not null,
+  verified_at  date not null,
+  data         jsonb not null,                   -- Fact in src/facts.ts
+  primary key (client_id, id)
+);
+
+-- Every AI call, as token counts (not money). Only ever added to; the monthly cap is checked against it.
+create table if not exists public.usage_entries (
+  id         bigint generated always as identity primary key,
+  client_id  text not null references public.clients (id) on delete cascade,
+  at         timestamptz not null,
+  data       jsonb not null                      -- UsageEntry in src/usage.ts
+);
+create index if not exists usage_entries_client_at_idx on public.usage_entries (client_id, at);
+
+alter table public.history_entries enable row level security;
+alter table public.ledger_entries  enable row level security;
+alter table public.facts           enable row level security;
+alter table public.usage_entries   enable row level security;

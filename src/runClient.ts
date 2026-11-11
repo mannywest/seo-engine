@@ -47,14 +47,15 @@ export async function runClient(profile: ClientProfile, o: RunClientOptions): Pr
     if (o.crawl) providers.push(new CrawlSources(await crawlSite(profile.siteUrl, undefined, { maxPages: 60 })));
     search = new CompositeSearch(providers);
   }
-  const history = o.live ? await History.load(profile.id, o.dataDir) : undefined;
+  const dataOpts = o.dataDir ? { dataDir: o.dataDir } : {};
+  const history = o.live ? await History.open(profile.id, dataOpts) : undefined;
   // Live runs always use the answer guard. A client with no facts file yet has an empty vault, so unconfirmed claims about the business are held for review.
-  const vault = o.live ? await FactsVault.load(profile.id, o.dataDir) : undefined;
-  const ledger = o.live ? await Ledger.load(profile.id, o.dataDir) : undefined;
+  const vault = o.live ? await FactsVault.open(profile.id, dataOpts) : undefined;
+  const ledger = o.live ? await Ledger.open(profile.id, dataOpts) : undefined;
   const inbox = o.live && profile.publish.inbox ? await openInbox(profile.id, o.dataDir ? { dataDir: o.dataDir } : {}) : undefined;
   const connector = o.publish && profile.connector ? createConnector(profile.connector) : undefined;
   if (o.publish && !profile.connector) throw new Error(`${profile.id}: no "connector" in the client file, so there is nowhere to deliver articles.`);
-  const usage = o.live ? await UsageLog.load(profile.id, o.dataDir) : undefined;
+  const usage = o.live ? await UsageLog.open(profile.id, dataOpts) : undefined;
   if (usage) llm = new MeteredProvider(llm, usage, { monthlyTokenCap: profile.llmTokenCapPerMonth });
   let count = o.count;
   if (history) {
