@@ -29,6 +29,15 @@ export function buildProof(draft: Draft, quality: QualityReport, profile: Client
   };
 }
 
+/** What the engine actually read from each source page, so a wrong fact can be traced to the page text or to the AI. */
+export function renderSources(draft: Draft): string {
+  return [
+    `# Source text used for: ${draft.title}`,
+    '',
+    ...draft.sources.flatMap((s) => [`## ${s.title}`, s.url, '', s.fullText ?? s.snippet, '']),
+  ].join('\n');
+}
+
 export function renderProof(p: ProofPack): string {
   const lines = [
     `# Proof pack: ${p.title}`,

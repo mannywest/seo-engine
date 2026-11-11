@@ -29,6 +29,7 @@ export async function writeDraft(
       .join('; ')}.`,
     'Use ONLY facts found in the provided sources. Do not invent statistics, clients, quotes or results.',
     'If a source describes a demo, calculator or sample data, call it a demo or an example ("in the demo", "for example"). Never call it live, and never present it as a real client or a real result.',
+    'When you quote numbers from a demo or example, copy the counts exactly as the source states them. Never work out or swap which group a number belongs to. Say which setting the demo used (for example "at the default 90% setting") and, if the source says the setting can be changed, say that changing it changes the results. If you are unsure of a number, leave it out.',
     'Write plain English a busy shop owner could follow: short sentences (mostly under 20 words), everyday words, no jargon without a quick explanation.',
     'Use British English spelling (organisation, prioritise, programme, colour).',
     `Never use these phrases: ${profile.bannedClaims.join('; ') || 'none'}.`,

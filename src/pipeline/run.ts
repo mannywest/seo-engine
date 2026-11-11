@@ -7,7 +7,7 @@ import { recordDelivery, type Ledger } from '../ledger.js';
 import type { LlmProvider } from '../providers/llm.js';
 import type { SearchProvider } from '../providers/search.js';
 import type { ClientProfile, QualityReport } from '../types.js';
-import { buildProof, renderProof } from '../proof.js';
+import { buildProof, renderProof, renderSources } from '../proof.js';
 import { toMarkdownFile } from '../publish/markdown.js';
 import { writeDraft } from './draft.js';
 import { improveReadability } from './readability.js';
@@ -69,6 +69,10 @@ export async function runPipeline(
     const proofDir = `${opts.outDir.replace(/[\\/]+$/, '')}.proofs`;
     await mkdir(proofDir, { recursive: true });
     await writeFile(join(proofDir, `${file.slug}.proof.md`), renderProof(buildProof(draft, quality, profile, llm.name)), 'utf8');
+    // The text the engine read from each source, beside the articles, for tracing wrong facts.
+    const sourcesDir = `${opts.outDir.replace(/[\\/]+$/, '')}.sources`;
+    await mkdir(sourcesDir, { recursive: true });
+    await writeFile(join(sourcesDir, `${file.slug}.sources.md`), renderSources(draft), 'utf8');
     slugs.push(file.slug);
     const result: RunResult = { slug: file.slug, path, quality };
 

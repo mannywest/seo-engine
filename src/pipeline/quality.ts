@@ -13,6 +13,9 @@ export interface QualityOptions {
   now?: Date;
 }
 
+/** How many unmatched number sentences turn the advice into a blocking problem. */
+export const UNSUPPORTED_CLAIMS_BLOCK = 3;
+
 const FIGURE = /(?:[£$€]\s?\d[\d,.]*\s?(?:k|m|bn)?|\d+(?:\.\d+)?\s?%)/gi;
 
 function wordCount(text: string): number {
@@ -89,7 +92,12 @@ export function checkDraft(
   // The answer guard: nothing stated about the business itself may go beyond what the business has confirmed.
   const guard = opts.vault ? guardDraft(body, opts.vault, { businessName: profile.name, now: opts.now }) : undefined;
   if (guard) issues.push(...guard.issues);
-  const warnings = [...onPage.warnings, ...unsupportedClaims({ ...draft, sources }), ...(guard?.warnings ?? [])];
+  const claimWarnings = unsupportedClaims({ ...draft, sources });
+  // One odd sentence is advice. Several number-heavy sentences that match no source suggest the article is inventing or garbling facts.
+  if (!opts.skipLength && claimWarnings.length >= UNSUPPORTED_CLAIMS_BLOCK) {
+    issues.push(`${claimWarnings.length} sentences with numbers do not match any source. Check them against the source pages before publishing.`);
+  }
+  const warnings = [...onPage.warnings, ...claimWarnings, ...(guard?.warnings ?? [])];
 
   return {
     passed: issues.length === 0,
