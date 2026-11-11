@@ -1,0 +1,9 @@
+{
+  // Cloudflare config for the approval inbox web page (the built page is web/dist).
+  "name": "plerosis-inbox",
+  "compatibility_date": "2026-11-01",
+  "assets": {
+    "directory": "./dist",
+    "not_found_handling": "single-page-application"
+  }
+}
