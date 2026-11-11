@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { handle } from '../worker/index';
 
 const KEY = 'sb_secret_TESTONLYKEY';
@@ -35,4 +35,21 @@ describe('server errors', () => {
     expect(text).toContain('[hidden]');
     expect(text).not.toContain(KEY);
   });
+
+  it("calls the real fetch the way Cloudflare demands (never as a property of another object)", async () => {
+    const calls: string[] = [];
+    // Behaves like Cloudflare's fetch: refuses to run when `this` is anything but nothing / the global object.
+    const strict = function (this: unknown, input: RequestInfo | URL): Promise<Response> {
+      if (this !== undefined && this !== globalThis) throw new TypeError('Illegal invocation: function called with incorrect `this` reference.');
+      calls.push(String(input));
+      if (String(input).includes('/auth/v1/user')) return Promise.resolve(new Response(JSON.stringify({ id: 'u1' }), { status: 200 }));
+      return Promise.resolve(new Response('[]', { status: 200 }));
+    };
+    vi.stubGlobal('fetch', strict);
+    const res = await handle(new Request('https://inbox.test/api/connect/config', { headers: { authorization: 'Bearer jwt' } }), env);
+    expect(res.status).toBe(200);
+    expect(calls.length).toBeGreaterThan(1);
+  });
 });
+
+afterEach(() => vi.unstubAllGlobals());

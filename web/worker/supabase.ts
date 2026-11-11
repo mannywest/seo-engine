@@ -12,11 +12,16 @@ export class DbError extends Error {
  * must have proved who the person is first (see connect.ts). Older JWT-style keys go in both headers; new sb_secret_ keys in apikey only.
  */
 export class Db {
+  private readonly fetchFn: Fetch;
+
   constructor(
     private readonly url: string,
     private readonly key: string,
-    private readonly fetchFn: Fetch = fetch,
-  ) {}
+    fetchFn: Fetch = (input, init) => fetch(input, init),
+  ) {
+    // Cloudflare refuses the real fetch when it is called as "this.something(...)" (Illegal invocation), so always call it plainly.
+    this.fetchFn = (input, init) => fetchFn(input, init);
+  }
 
   private base() {
     return this.url.replace(/\/+$/, '');
