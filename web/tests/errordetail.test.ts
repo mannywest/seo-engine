@@ -22,4 +22,17 @@ describe('server errors', () => {
     expect(text).not.toContain('SECRET-BODY-TEXT');
     expect(text).not.toContain(KEY);
   });
+
+  it('names the kind of slip for a coding error, and blanks out the key if it appears', async () => {
+    const boom = async (input: RequestInfo | URL): Promise<Response> => {
+      if (String(input).includes('/auth/v1/user')) throw new TypeError(`bad thing with ${KEY}`);
+      return new Response('{}', { status: 200 });
+    };
+    const res = await handle(new Request('https://inbox.test/api/connect/config', { headers: { authorization: 'Bearer jwt' } }), env, { fetch: boom });
+    const text = await res.text();
+    expect(res.status).toBe(500);
+    expect(text).toContain('TypeError');
+    expect(text).toContain('[hidden]');
+    expect(text).not.toContain(KEY);
+  });
 });
