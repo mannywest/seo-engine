@@ -4,6 +4,7 @@ import { MeteredProvider, UsageLog } from './usage.js';
 import { articlesRemaining } from './plans.js';
 import { FactsVault } from './facts.js';
 import { History } from './history.js';
+import { FileInboxStore } from './inbox.js';
 import { Ledger } from './ledger.js';
 import { runPipeline, type RunResult } from './pipeline/run.js';
 import { crawlSite } from './seo/crawl.js';
@@ -50,6 +51,7 @@ export async function runClient(profile: ClientProfile, o: RunClientOptions): Pr
   // Live runs always use the answer guard. A client with no facts file yet has an empty vault, so unconfirmed claims about the business are held for review.
   const vault = o.live ? await FactsVault.load(profile.id, o.dataDir) : undefined;
   const ledger = o.live ? await Ledger.load(profile.id, o.dataDir) : undefined;
+  const inbox = o.live && profile.publish.inbox ? await FileInboxStore.load(profile.id, o.dataDir) : undefined;
   const connector = o.publish && profile.connector ? createConnector(profile.connector) : undefined;
   if (o.publish && !profile.connector) throw new Error(`${profile.id}: no "connector" in the client file, so there is nowhere to deliver articles.`);
   const usage = o.live ? await UsageLog.load(profile.id, o.dataDir) : undefined;
@@ -62,7 +64,7 @@ export async function runClient(profile: ClientProfile, o: RunClientOptions): Pr
   }
   if (count <= 0) return [];
   try {
-    return await runPipeline(profile, llm, search, { count, outDir, mock: !o.live, history, connector, vault, ledger });
+    return await runPipeline(profile, llm, search, { count, outDir, mock: !o.live, history, connector, vault, ledger, inbox });
   } finally {
     await history?.save();
     await usage?.save();

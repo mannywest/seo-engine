@@ -23,6 +23,8 @@ export interface ClientProfile {
   publish: {
     /** "review": drafts wait for approval. "auto": publish if the quality check passes. */
     mode: 'review' | 'auto';
+    /** Hold drafts in the approval inbox until a person approves them (review mode, or any draft that fails the checks). Off by default. */
+    inbox?: boolean;
     cadencePerWeek: number;
     contentDir: string;
     /** URL path where articles live on the site. Defaults to /blog. */

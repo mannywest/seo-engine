@@ -3,6 +3,7 @@ import { dirname, join } from 'node:path';
 import type { Connector, PublishItem } from '../connectors/types.js';
 import type { FactsVault } from '../facts.js';
 import type { History } from '../history.js';
+import { itemFromDraft, waitingReason, type InboxStore } from '../inbox.js';
 import { recordDelivery, type Ledger } from '../ledger.js';
 import type { LlmProvider } from '../providers/llm.js';
 import type { SearchProvider } from '../providers/search.js';
@@ -28,6 +29,8 @@ export interface RunOptions {
   vault?: FactsVault;
   /** If set, every delivery that goes through is recorded so it can be taken back. */
   ledger?: Ledger;
+  /** If set (live runs only), drafts that need a person wait here instead of being delivered. */
+  inbox?: InboxStore;
 }
 
 export interface RunResult {
@@ -36,6 +39,8 @@ export interface RunResult {
   quality: QualityReport;
   deliveredTo?: string;
   deliveryNote?: string;
+  /** True when the draft is waiting in the approval inbox. */
+  waitingForApproval?: boolean;
 }
 
 async function existingSlugs(outDir: string): Promise<string[]> {
@@ -90,8 +95,14 @@ export async function runPipeline(
     slugs.push(file.slug);
     const result: RunResult = { slug: file.slug, path, quality };
 
-    // Only drafts that pass the automatic checks leave the engine. The rest stay local for a human to look at.
-    if (opts.connector && quality.passed && !opts.mock) {
+    // With an approval inbox, anything that needs a person (review mode, or failed checks) waits there instead of leaving the engine.
+    const needsApproval = !!opts.inbox && !opts.mock && (profile.publish.mode === 'review' || !quality.passed);
+    if (needsApproval && opts.inbox) {
+      await opts.inbox.put(itemFromDraft(draft, quality, { status: 'waiting', reason: waitingReason(quality) }));
+      result.waitingForApproval = true;
+      result.deliveryNote = 'Waiting in the approval inbox.';
+    } else if (opts.connector && quality.passed && !opts.mock) {
+      // Only drafts that pass the automatic checks leave the engine. The rest stay local for a human to look at.
       const item: PublishItem = {
         slug: file.slug,
         title: draft.title,
@@ -109,6 +120,9 @@ export async function runPipeline(
         result.deliveredTo = r?.ok ? r.url ?? opts.connector.type : undefined;
         result.deliveryNote = r?.note;
         if (r?.ok && opts.ledger) recordDelivery(opts.ledger, opts.connector, { slug: file.slug, title: draft.title }, r, { mode: profile.publish.mode });
+        if (r?.ok && opts.inbox) {
+          await opts.inbox.put(itemFromDraft(draft, quality, { status: 'published', reason: 'Published automatically.', deliveredTo: result.deliveredTo, deliveryNote: result.deliveryNote }));
+        }
       } catch (e) {
         result.deliveryNote = `Delivery failed: ${e instanceof Error ? e.message : String(e)}`;
       }
