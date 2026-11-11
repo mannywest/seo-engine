@@ -48,3 +48,34 @@ describe('source text record', () => {
     expect(out).toContain('ub');
   });
 });
+
+describe('the AI sees more of the closest sources', () => {
+  const words = ['alpha', 'beta', 'gamma', 'delta', 'epsilon', 'zeta', 'eta', 'theta', 'iota', 'kappa'];
+  // Later rows mention more of the search words, so they rank higher than earlier rows.
+  const para = (n: number) => `Invoice row ${n} from supplier number ${n} is shown in the demo table with ${words.slice(0, Math.min(n, 10)).join(' ')} noted.`;
+  const page = Array.from({ length: 12 }, (_, i) => para(i + 1)).join('\n\n');
+  it('rankDocs gives a longer extract than the snippet, in page order', async () => {
+    const { rankDocs } = await import('../src/providers/sources.js');
+    const [s] = rankDocs([{ title: 'T', url: 'u', paragraphs: page.split('\n\n') }], words.join(' '), 1);
+    expect(s!.snippet.length).toBeLessThanOrEqual(700);
+    expect(s!.excerpt!.length).toBeGreaterThan(s!.snippet.length);
+    expect(s!.excerpt!.indexOf('row 5 ')).toBeGreaterThan(-1);
+    expect(s!.excerpt!.indexOf('row 5 ')).toBeLessThan(s!.excerpt!.indexOf('row 12 '));
+  });
+  it('shows the extract for the first two sources only', async () => {
+    let prompt = '';
+    const llm = { name: 'x', complete: async (r: { prompt: string }) => ((prompt = r.prompt), JSON.stringify({ title: 'Title here', description: 'd'.repeat(80), body: 'b'.repeat(50), tags: [] })) };
+    const src = (n: string) => ({ title: n, url: n, snippet: `short-${n}`, excerpt: `long-${n}` });
+    await writeDraft(profile, topic, [src('a'), src('b'), src('c')], llm);
+    expect(prompt).toContain('long-a');
+    expect(prompt).toContain('long-b');
+    expect(prompt).toContain('short-c');
+    expect(prompt).not.toContain('long-c');
+  });
+  it('tells the AI not to present a partial list as the whole set', async () => {
+    let system = '';
+    const llm = { name: 'x', complete: async (r: { system: string }) => ((system = r.system), JSON.stringify({ title: 'Title here', description: 'd'.repeat(80), body: 'b'.repeat(50), tags: [] })) };
+    await writeDraft(profile, topic, [], llm);
+    expect(system).toContain('never present a partial list as the whole set');
+  });
+});

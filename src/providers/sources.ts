@@ -18,6 +18,9 @@ function toParagraphs(text: string): string[] {
     .filter((p) => p.split(' ').length >= 6);
 }
 
+/** How much of the best-matching text the AI gets for its closest sources. */
+export const EXCERPT_CHARS = 3000;
+
 /** Ranks documents by how well their paragraphs match the query (term overlap weighted by rarity). */
 export function rankDocs(docs: Doc[], query: string, limit: number, snippetChars = 700): Source[] {
   const q = tokens(query);
@@ -28,22 +31,24 @@ export function rankDocs(docs: Doc[], query: string, limit: number, snippetChars
     for (const t of set) df.set(t, (df.get(t) ?? 0) + 1);
   }
   const idf = (t: string) => Math.log(1 + docs.length / (1 + (df.get(t) ?? 0)));
-  const scored: { doc: Doc; score: number; best: string[] }[] = [];
+  const scored: { doc: Doc; score: number; best: string[]; excerpt: string }[] = [];
   for (const doc of docs) {
     const ps = doc.paragraphs
-      .map((p) => {
+      .map((p, i) => {
         const pt = new Set(tokens(p));
-        return { p, s: q.reduce((n, t) => n + (pt.has(t) ? idf(t) : 0), 0) };
+        return { p, i, s: q.reduce((n, t) => n + (pt.has(t) ? idf(t) : 0), 0) };
       })
       .filter((x) => x.s > 0)
       .sort((a, b) => b.s - a.s);
     if (!ps.length) continue;
-    scored.push({ doc, score: ps.slice(0, 3).reduce((n, x) => n + x.s, 0), best: ps.slice(0, 3).map((x) => x.p) });
+    // The extract takes up to 8 best paragraphs but keeps page order, so lists and tables stay together.
+    const excerpt = ps.slice(0, 8).sort((a, b) => a.i - b.i).map((x) => x.p).join(' ').slice(0, EXCERPT_CHARS);
+    scored.push({ doc, score: ps.slice(0, 3).reduce((n, x) => n + x.s, 0), best: ps.slice(0, 3).map((x) => x.p), excerpt });
   }
   return scored
     .sort((a, b) => b.score - a.score)
     .slice(0, limit)
-    .map(({ doc, best }) => ({ title: doc.title, url: doc.url, snippet: best.join(' ').slice(0, snippetChars), fullText: doc.paragraphs.join(' ') }));
+    .map(({ doc, best, excerpt }) => ({ title: doc.title, url: doc.url, snippet: best.join(' ').slice(0, snippetChars), excerpt, fullText: doc.paragraphs.join(' ') }));
 }
 
 /** Your own notes: any .md or .txt files in a folder (case notes, transcripts, service descriptions). */

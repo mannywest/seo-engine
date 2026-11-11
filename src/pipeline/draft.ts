@@ -11,6 +11,9 @@ const DraftSchema = z.object({
   tags: z.preprocess(toList, z.array(z.string())).default([]),
 });
 
+/** How many of the closest sources are shown to the AI in full extract form. */
+export const FULL_SOURCES = 2;
+
 export async function writeDraft(
   profile: ClientProfile,
   topic: Topic,
@@ -29,7 +32,7 @@ export async function writeDraft(
       .join('; ')}.`,
     'Use ONLY facts found in the provided sources. Do not invent statistics, clients, quotes or results.',
     'If a source describes a demo, calculator or sample data, call it a demo or an example ("in the demo", "for example"). Never call it live, and never present it as a real client or a real result.',
-    'When you quote numbers from a demo or example, copy the counts exactly as the source states them. Never work out or swap which group a number belongs to. Say which setting the demo used (for example "at the default 90% setting") and, if the source says the setting can be changed, say that changing it changes the results. If you are unsure of a number, leave it out.',
+    'When you quote numbers from a demo or example, copy the counts exactly as the source states them. Never work out or swap which group a number belongs to. Say which setting the demo used (for example "at the default 90% setting") and, if the source says the setting can be changed, say that changing it changes the results. If you are unsure of a number, leave it out. If you list only some of the items in a source, say they are examples ("for instance"); never present a partial list as the whole set, and keep any counts consistent with the list.',
     'Write plain English a busy shop owner could follow: short sentences (mostly under 20 words), everyday words, no jargon without a quick explanation.',
     'Use British English spelling (organisation, prioritise, programme, colour).',
     `Never use these phrases: ${profile.bannedClaims.join('; ') || 'none'}.`,
@@ -42,7 +45,8 @@ export async function writeDraft(
     `Intent: ${topic.intent}`,
     `Outline: ${topic.outline.join(' | ')}`,
     'Sources:',
-    ...sources.map((s, i) => `[${i + 1}] ${s.title} (${s.url}): ${s.snippet}`),
+    // The two closest sources get the longer extract so lists and tables are not cut off halfway.
+    ...sources.map((s, i) => `[${i + 1}] ${s.title} (${s.url}): ${i < FULL_SOURCES ? s.excerpt ?? s.snippet : s.snippet}`),
   ].join('\n');
 
   const parsed = await askForJson(llm, { task: 'draft', system, prompt, maxTokens: 4000 }, DraftSchema, 'article draft');

@@ -42,6 +42,8 @@ export interface Source {
   title: string;
   url: string;
   snippet: string;
+  /** A longer extract (the best-matching paragraphs, in page order). Shown to the AI for the closest sources so it does not work from half a table or list. */
+  excerpt?: string;
   /** The whole page text. Used only by the checks (never sent to the AI) so a figure further down the page is not flagged as invented. */
   fullText?: string;
 }
