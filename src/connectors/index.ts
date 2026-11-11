@@ -18,6 +18,10 @@ export const ConnectorSchema = z.discriminatedUnion('type', [
       baseBranch: z.string().default('main'),
       contentDir: z.string().default('src/content/blog'),
       tokenEnv: z.string().default('GITHUB_TOKEN'),
+      /** Set by the "Connect your website" flow. When present the engine signs in as the GitHub App instead of using a token. */
+      installationId: z.number().int().positive().optional(),
+      appIdEnv: z.string().optional(),
+      privateKeyEnv: z.string().optional(),
     })
     .strict(),
   z

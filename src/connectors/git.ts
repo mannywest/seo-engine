@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { sha256 } from './hash.js';
+import { AppTokenSource, appSettingsProblems, DEFAULT_APP_ID_ENV, DEFAULT_APP_KEY_ENV } from './githubApp.js';
 import type { Connector, Env, Fetch, PublishContext, PublishItem, PublishResult, RevertContext, RevertResult } from './types.js';
 
 const Handle = z.object({ prNumber: z.number(), branch: z.string(), path: z.string(), sha256: z.string() });
@@ -12,8 +13,16 @@ export interface GitConfig {
   baseBranch: string;
   /** Folder inside the repo where articles live, e.g. src/content/blog */
   contentDir: string;
-  /** NAME of the environment variable that holds a GitHub token (never the token itself). */
+  /** NAME of the environment variable that holds a GitHub token (never the token itself). Ignored when installationId is set. */
   tokenEnv: string;
+  /**
+   * Set when the client connected through the engine's GitHub App (no token to paste). The engine then signs in as the app
+   * and gets a one-hour key limited to this repo each time it publishes.
+   */
+  installationId?: number | undefined;
+  /** NAMES of the environment variables holding the app id and private key. Default GITHUB_APP_ID and GITHUB_APP_PRIVATE_KEY. */
+  appIdEnv?: string | undefined;
+  privateKeyEnv?: string | undefined;
 }
 
 /**
@@ -23,15 +32,41 @@ export interface GitConfig {
  */
 export class GitConnector implements Connector {
   readonly type = 'git';
+  private appTokens?: AppTokenSource;
+
   constructor(
     private cfg: GitConfig,
     private env: Env = process.env,
     private fetchFn: Fetch = fetch,
   ) {}
 
-  private async api(path: string, init: RequestInit = {}) {
+  private get usesApp(): boolean {
+    return this.cfg.installationId !== undefined;
+  }
+
+  /** The key for this call: a one-hour app key when the client connected through the app, otherwise the token named in the config. */
+  private async token(): Promise<string> {
+    if (this.usesApp) {
+      if (!this.appTokens) {
+        const problems = appSettingsProblems(this.env, this.cfg.appIdEnv, this.cfg.privateKeyEnv);
+        if (problems.length) throw new Error(problems.join(' '));
+        this.appTokens = new AppTokenSource({
+          appId: this.env[this.cfg.appIdEnv ?? DEFAULT_APP_ID_ENV]!,
+          privateKey: this.env[this.cfg.privateKeyEnv ?? DEFAULT_APP_KEY_ENV]!,
+          installationId: this.cfg.installationId!,
+          repo: this.cfg.repo,
+          fetchFn: this.fetchFn,
+        });
+      }
+      return this.appTokens.token();
+    }
     const token = this.env[this.cfg.tokenEnv];
     if (!token) throw new Error(`Environment variable ${this.cfg.tokenEnv} is not set.`);
+    return token;
+  }
+
+  private async api(path: string, init: RequestInit = {}) {
+    const token = await this.token();
     return this.fetchFn(`https://api.github.com/repos/${this.cfg.repo}${path}`, {
       ...init,
       headers: {
@@ -45,7 +80,15 @@ export class GitConnector implements Connector {
   }
 
   async check(): Promise<string[]> {
-    if (!this.env[this.cfg.tokenEnv]) return [`Set ${this.cfg.tokenEnv} to a GitHub token with write access to ${this.cfg.repo}.`];
+    if (this.usesApp) {
+      const problems = appSettingsProblems(this.env, this.cfg.appIdEnv, this.cfg.privateKeyEnv);
+      if (problems.length) return problems;
+      try {
+        await this.token();
+      } catch (e) {
+        return [e instanceof Error ? e.message : String(e)];
+      }
+    } else if (!this.env[this.cfg.tokenEnv]) return [`Set ${this.cfg.tokenEnv} to a GitHub token with write access to ${this.cfg.repo}.`];
     const res = await this.api('').catch((e: Error) => e);
     if (res instanceof Error) return [`Could not reach GitHub: ${res.message}`];
     if (res.status === 404) return [`Repo ${this.cfg.repo} not found, or the token cannot see it.`];

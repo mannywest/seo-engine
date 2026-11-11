@@ -109,6 +109,7 @@ Everything the service could include, grouped so features can be sold alone or i
 |---|---|---|---|
 | Setup wizard from a website address | Reads the site and fills in the business details | Auto | Built (command line) |
 | Connections | Git (pull request), WordPress, webhook for others | Guided | Built |
+| One-tap site connection | Client taps Connect, approves on GitHub, and is sent back: no token to make or paste. Engine signs in as a GitHub App and gets a one-hour key for the one repo | Auto | In progress (engine sign-in built; Connect screen, Supabase connections and app set-up still to do) |
 | Approval inbox | One place to approve articles, posts, replies | Approve | To build |
 | Accounts, team roles, billing | Sign-up, invite a colleague, plans | n/a | To build |
 | Per-feature switches | Needed to sell features or plans | n/a | To build |
