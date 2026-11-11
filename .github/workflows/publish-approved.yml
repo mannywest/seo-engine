@@ -1,0 +1,67 @@
+# Publish approved articles.
+#
+# To switch this on: on github.com open the seo-engine repository, choose Add file > Create new file, name it
+#   .github/workflows/publish-approved.yml
+# paste this whole file in, and commit. (The assistant cannot write into .github/workflows, so a person adds it.)
+#
+# It runs in two situations:
+#   1. Straight after someone approves an article in the inbox. The database asks GitHub to start it
+#      (see supabase/publish-trigger.sql), passing the client's id.
+#   2. Once a day as a safety net. It publishes anything approved that was missed, and retries any delivery that failed.
+#
+# Safe to run at any time: an article that is already published is never published again.
+# If a delivery fails the run is marked failed, so GitHub emails you.
+#
+# Secrets needed (repository Settings > Secrets and variables > Actions):
+#   SUPABASE_URL           the Supabase project URL
+#   SUPABASE_SERVICE_KEY   the Supabase service key (kept here only, never in the web app)
+#   SECRETS_JSON           one JSON object holding the connector passwords (for example the WordPress app password)
+name: Publish approved
+on:
+  workflow_dispatch:
+    inputs:
+      client:
+        description: Client id to publish for. Leave empty for every client with the approval inbox on.
+        required: false
+        default: ""
+  schedule:
+    - cron: "17 7 * * *"
+permissions:
+  contents: read
+# One publish run at a time. A second approval while one is running waits its turn and then publishes everything approved by then.
+concurrency:
+  group: publish-approved
+  cancel-in-progress: false
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+      SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
+      SECRETS_JSON: ${{ secrets.SECRETS_JSON }}
+      CLIENT: ${{ inputs.client }}
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Install
+        run: npm install
+      - name: Publish approved articles
+        run: |
+          if [ -n "$CLIENT" ]; then
+            npx tsx src/cli.ts publish-approved "$CLIENT"
+          else
+            npx tsx src/cli.ts publish-approved
+          fi
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: publish-data
+          path: data/
+          retention-days: 30
+          if-no-files-found: ignore
