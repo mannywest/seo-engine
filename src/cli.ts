@@ -3,7 +3,8 @@ import { dirname, join } from 'node:path';
 import { createConnector } from './connectors/index.js';
 import { FACT_KINDS, FactsVault, type FactKind } from './facts.js';
 import { History } from './history.js';
-import { decide, FileInboxStore, InboxError, publishApproved } from './inbox.js';
+import { decide, InboxError, publishApproved, type InboxStore } from './inbox.js';
+import { InboxConfigError, inboxClientFiles, openInbox } from './inboxOpen.js';
 import { Ledger, revertChange } from './ledger.js';
 import { buildReceipt } from './receipt.js';
 import { UsageLog } from './usage.js';
@@ -58,6 +59,8 @@ const USAGE = `seo-engine commands (all free to run except --llm anthropic):
       WordPress posts go to the trash, GitHub changes become a pull request). --force undoes it anyway.
       Needs the same access (environment variables) as publishing. Articles sent by webhook cannot be taken back from here.
 
+  publish-approved [client-id]
+      Publishes every approved article waiting in the approval inbox, for one client or all clients with the inbox on. Safe to run any time; nothing is published twice.
   inbox <client.json> [list | show ID | approve ID | reject ID | publish] [--by NAME] [--note TEXT] [--edit-file PATH] [--publish]
       The approval inbox. Drafts that need a person wait here (turn it on with "inbox": true under "publish" in the client file).
       approve marks one ready (--edit-file replaces the text with your corrected version; --publish sends it straight away).
@@ -339,20 +342,44 @@ async function cmdLedger(target: string) {
 
 const INBOX_LABEL = { waiting: 'waiting', approved: 'approved', rejected: 'rejected', published: 'published', publish_failed: 'approved, delivery failed' } as const;
 
+/** Sends one client's approved articles out through its connector and records them in the change ledger. */
+async function publishFor(profile: ClientProfile, store: InboxStore) {
+  if (!profile.connector) throw new InboxError('This client has no connector, so there is nowhere to publish to.');
+  const ledger = await Ledger.load(profile.id);
+  const results = await publishApproved(store, profile, createConnector(profile.connector), ledger);
+  await ledger.save();
+  if (!results.length) console.log(`${profile.name}: nothing approved is waiting to be published.`);
+  for (const r of results) console.log(`${r.ok ? 'published' : 'FAILED   '}  ${r.id}  ${r.note}${r.url ? `  ${r.url}` : ''}`);
+  if (results.some((r) => !r.ok)) process.exitCode = 1;
+}
+
+/** One client or all clients with the inbox on. A problem with one client never stops the others. */
+async function cmdPublishApproved(only?: string) {
+  try {
+    const files = await inboxClientFiles('clients', only);
+    if (!files.length) return console.log('No client has the approval inbox switched on.');
+    for (const f of files) {
+      try {
+        const profile = await loadProfile(f);
+        await publishFor(profile, await openInbox(profile.id));
+      } catch (e) {
+        console.error(`${f}: ${e instanceof Error ? e.message : e}`);
+        process.exitCode = 1;
+      }
+    }
+  } catch (e) {
+    if (!(e instanceof InboxConfigError)) throw e;
+    console.log(e.message);
+    process.exitCode = 1;
+  }
+}
+
 async function cmdInbox(target: string) {
   const profile = await loadProfile(target);
-  const store = await FileInboxStore.load(profile.id);
+  const store = await openInbox(profile.id);
   const sub = process.argv[4] ?? 'list';
   const id = process.argv[5];
-  const publish = async () => {
-    if (!profile.connector) throw new InboxError('This client has no connector, so there is nowhere to publish to.');
-    const ledger = await Ledger.load(profile.id);
-    const results = await publishApproved(store, profile, createConnector(profile.connector), ledger);
-    await ledger.save();
-    if (!results.length) console.log('Nothing approved is waiting to be published.');
-    for (const r of results) console.log(`${r.ok ? 'published' : 'FAILED   '}  ${r.id}  ${r.note}${r.url ? `  ${r.url}` : ''}`);
-    if (results.some((r) => !r.ok)) process.exitCode = 1;
-  };
+  const publish = () => publishFor(profile, store);
   try {
     if (sub === 'list') {
       const items = await store.list();
@@ -378,7 +405,7 @@ async function cmdInbox(target: string) {
     } else if (sub === 'publish') await publish();
     else console.log(USAGE);
   } catch (e) {
-    if (!(e instanceof InboxError)) throw e;
+    if (!(e instanceof InboxError || e instanceof InboxConfigError)) throw e;
     console.log(e.message);
     process.exitCode = 1;
   }
@@ -388,6 +415,7 @@ async function main() {
   loadSecretsBlob();
   const [cmd, target] = process.argv.slice(2);
   if (cmd === 'run-all') return cmdRunAll();
+  if (cmd === 'publish-approved') return cmdPublishApproved(target);
   if (!cmd || !target) {
     console.log(USAGE);
     process.exit(1);
