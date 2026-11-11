@@ -11,6 +11,7 @@ import { buildProof, renderProof, renderSources } from '../proof.js';
 import { toMarkdownFile } from '../publish/markdown.js';
 import { writeDraft } from './draft.js';
 import { improveReadability } from './readability.js';
+import { repairFigures, unsupportedFigures } from './repair.js';
 import { planTopics } from './plan.js';
 import { checkDraft } from './quality.js';
 import { gatherSources } from './research.js';
@@ -59,8 +60,21 @@ export async function runPipeline(
     const sources = await gatherSources(topic, search);
     const written = await writeDraft(profile, topic, sources, llm, opts.vault);
     // Live runs only: one optional plain-English rewrite when the article is hard to read.
-    const draft = opts.mock ? written : await improveReadability(written, llm);
-    const quality = checkDraft(draft, profile, { skipLength: opts.mock, existingSlugs: slugs, vault: opts.vault });
+    let draft = opts.mock ? written : await improveReadability(written, llm);
+    const checkOpts = { skipLength: opts.mock, existingSlugs: slugs, vault: opts.vault };
+    let quality = checkDraft(draft, profile, checkOpts);
+    // Live runs only: if figures lack a source, one repair pass tries to take them out. Kept only if it clearly helps.
+    const unsupported = opts.mock ? [] : unsupportedFigures(quality.issues);
+    if (unsupported.length) {
+      const repaired = await repairFigures(draft, unsupported, llm);
+      if (repaired !== draft) {
+        const again = checkDraft(repaired, profile, checkOpts);
+        if (again.issues.length < quality.issues.length) {
+          draft = repaired;
+          quality = again;
+        }
+      }
+    }
     const file = toMarkdownFile(draft, profile);
     const path = join(opts.outDir, `${file.slug}.md`);
     await mkdir(dirname(path), { recursive: true });

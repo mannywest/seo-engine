@@ -6,11 +6,14 @@ import { z } from 'zod';
 
 const Rewrite = z.object({ body: z.string().min(20) });
 
-const words = (t: string) => t.split(/\s+/).filter(Boolean).length;
+export const words = (t: string) => t.split(/\s+/).filter(Boolean).length;
 const plain = (md: string) =>
   md.replace(/```[\s\S]*?```/g, ' ').replace(/\[([^\]]*)\]\([^)]*\)/g, '$1').replace(/^#{1,6}\s+/gm, '').replace(/[*_`>]/g, '');
-const linksOf = (md: string) => [...md.matchAll(/\]\(([^)\s]+)\)/g)].map((m) => m[1] ?? '');
-const headings = (md: string) => (md.match(/^#{2,3}\s+.+$/gm) ?? []).length;
+export const linksOf = (md: string) => [...md.matchAll(/\]\(([^)\s]+)\)/g)].map((m) => m[1] ?? '');
+export const headings = (md: string) => (md.match(/^#{2,3}\s+.+$/gm) ?? []).length;
+
+/** Money amounts and percentages in a text. */
+export const figuresOf = (t: string) => new Set(t.match(/[£$€]\s?\d[\d,.]*|\d+(?:\.\d+)?\s?%/g) ?? []);
 
 /** True when a rewrite is clearly easier to read and has lost nothing important. */
 export function acceptableRewrite(before: string, after: string, minGain = 5): boolean {
@@ -19,10 +22,9 @@ export function acceptableRewrite(before: string, after: string, minGain = 5): b
   const kept = new Set(linksOf(after));
   if (!linksOf(before).every((l) => kept.has(l))) return false;
   if (headings(after) < headings(before)) return false;
-  const figs = (t: string) => new Set(t.match(/[£$€]\s?\d[\d,.]*|\d+(?:\.\d+)?\s?%/g) ?? []);
-  const afterFigs = figs(after);
-  for (const f of figs(before)) if (!afterFigs.has(f)) return false;
-  for (const f of afterFigs) if (!figs(before).has(f)) return false;
+  const afterFigs = figuresOf(after);
+  for (const f of figuresOf(before)) if (!afterFigs.has(f)) return false;
+  for (const f of afterFigs) if (!figuresOf(before).has(f)) return false;
   return true;
 }
 

@@ -120,7 +120,8 @@ export function unsupportedClaims(draft: Draft): string[] {
     .replace(/[*_`>]/g, '');
   const sourceTokens = draft.sources.map((s) => new Set(tokens(`${s.title} ${s.fullText ?? s.snippet}`)));
   const out: string[] = [];
-  for (const s of sentences(plain)) {
+  // Each line is judged on its own, so a list's lead-in is not glued to its first item.
+  for (const s of plain.split(/\n+/).flatMap((line) => sentences(line))) {
     if (!/\d/.test(s)) continue;
     if (s.endsWith(':')) continue; // a lead-in to a list is not a claim
     const t = tokens(s).filter((w) => !/^\d+$/.test(w));
