@@ -9,6 +9,7 @@ jobs:
     timeout-minutes: 30
     env:
       GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+      PAGESPEED_API_KEY: ${{ secrets.PAGESPEED_API_KEY }}
     defaults:
       run:
         shell: bash
@@ -74,6 +75,14 @@ jobs:
               echo "### Real article (first 80 lines)"
               echo '```'
               head -n 80 "$a"
+              echo '```'
+            fi
+            s=$(find out/live.sources -name '*.md' 2>/dev/null | head -n 1)
+            if [ -n "$s" ]; then
+              echo ""
+              echo "### Source text the engine read (first 60 lines)"
+              echo '```'
+              head -n 60 "$s"
               echo '```'
             fi
           } >> "$GITHUB_STEP_SUMMARY"
