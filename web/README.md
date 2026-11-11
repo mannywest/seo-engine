@@ -35,7 +35,7 @@ Links are signed, expire after 15 minutes and work once. Without `SUPABASE_SERVI
 ## Commands
 ```
 cd web
-npm install      # (npm ci fails; do not commit package-lock.json)
+npm ci           # uses the committed package-lock.json (Cloudflare runs this too)
 npm run dev      # local preview
 npm run verify   # typecheck + tests + build
 ```
