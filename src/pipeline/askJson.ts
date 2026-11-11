@@ -5,7 +5,12 @@ import type { LlmProvider, LlmRequest } from '../providers/llm.js';
 export function extractJson(text: string): unknown {
   const start = text.indexOf('{');
   const end = text.lastIndexOf('}');
-  if (start === -1 || end <= start) throw new Error('Model reply contained no JSON object.');
+  if (start === -1 || end <= start) {
+    const seen = text.trim()
+      ? `${text.length} characters, starting: "${text.trim().slice(0, 120).replace(/\s+/g, ' ')}"`
+      : 'the reply was empty';
+    throw new Error(`Model reply contained no JSON object (${seen}).`);
+  }
   return JSON.parse(text.slice(start, end + 1));
 }
 
