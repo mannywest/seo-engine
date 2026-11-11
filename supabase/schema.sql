@@ -249,3 +249,81 @@ drop trigger if exists site_connections_touch on public.site_connections;
 create trigger site_connections_touch
   before update on public.site_connections
   for each row execute function public.site_connections_touch();
+
+-- ---------------------------------------------------------------------------------------------
+-- "Connect your website", part 3: who may set it up, the one-time links, and where the GitHub App's key lives.
+-- Safe to run again. Everything here is for the server piece behind the Connect screen (it uses the service key);
+-- row-level security is ON and there is deliberately NO policy, so a logged-in person can read or write none of it.
+-- ---------------------------------------------------------------------------------------------
+
+-- The few people who may create the GitHub App (a one-time job). Not the same as a client's "owner".
+-- To add yourself, run this once in the SQL editor with your own login email (do not save it in a file):
+--   insert into public.platform_admins (user_id) select id from auth.users where email = 'you@example.com' on conflict do nothing;
+create table if not exists public.platform_admins (
+  user_id     uuid primary key references auth.users (id) on delete cascade,
+  created_at  timestamptz not null default now()
+);
+alter table public.platform_admins enable row level security;
+
+-- One row per trip to GitHub and back. The link a person follows carries a signed copy of `nonce`; the row says who
+-- started it, for which business, and when it stops working. `consumed_at` is set the first time the link comes back,
+-- which is what makes it single-use. Nothing secret is stored here.
+create table if not exists public.connect_attempts (
+  nonce        text primary key,                     -- 32 random bytes, unguessable
+  kind         text not null check (kind in ('github_connect', 'github_app_setup', 'github_pick')),
+  client_id    text references public.clients (id) on delete cascade,   -- empty for the one-time app set-up
+  user_id      uuid not null references auth.users (id) on delete cascade,
+  leg          integer not null default 1,           -- 1 = first trip to GitHub, 2 = after installing the app (stops endless loops)
+  candidates   jsonb,                                -- for 'github_pick': the repos GitHub confirmed this person can use
+  created_at   timestamptz not null default now(),
+  expires_at   timestamptz not null,
+  consumed_at  timestamptz
+);
+create index if not exists connect_attempts_pick_idx on public.connect_attempts (client_id, user_id, kind, created_at);
+alter table public.connect_attempts enable row level security;
+
+-- The GitHub App's id, key and sign-in details live in the Supabase Vault (encrypted), never in a table, file or the browser.
+-- These two helpers are the only way in, and only the service key may call them. Only names starting github_app_ are allowed,
+-- so they cannot be used to read other Vault secrets (such as github_actions_token).
+create or replace function public.lodestar_get_secret(p_name text)
+returns text
+language plpgsql
+security definer
+set search_path = public, vault
+as $$
+begin
+  if p_name is null or p_name not like 'github\_app\_%' then
+    raise exception 'That secret name is not allowed.';
+  end if;
+  return (select decrypted_secret from vault.decrypted_secrets where name = p_name limit 1);
+end;
+$$;
+
+create or replace function public.lodestar_put_secret(p_name text, p_value text)
+returns void
+language plpgsql
+security definer
+set search_path = public, vault
+as $$
+declare
+  existing uuid;
+begin
+  if p_name is null or p_name not like 'github\_app\_%' then
+    raise exception 'That secret name is not allowed.';
+  end if;
+  if p_value is null or btrim(p_value) = '' then
+    raise exception 'A secret cannot be empty.';
+  end if;
+  select id into existing from vault.secrets where name = p_name limit 1;
+  if existing is null then
+    perform vault.create_secret(p_value, p_name, 'Lodestar GitHub App');
+  else
+    perform vault.update_secret(existing, p_value, p_name, 'Lodestar GitHub App');
+  end if;
+end;
+$$;
+
+revoke all on function public.lodestar_get_secret(text) from public, anon, authenticated;
+revoke all on function public.lodestar_put_secret(text, text) from public, anon, authenticated;
+grant execute on function public.lodestar_get_secret(text) to service_role;
+grant execute on function public.lodestar_put_secret(text, text) to service_role;

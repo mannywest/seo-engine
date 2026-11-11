@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { ensureAppCredentials } from './appCredentials.js';
 import { ConnectorSchema, type ConnectorConfig } from './connectors/index.js';
 import type { Env } from './connectors/types.js';
 import { hostedSettings, StateError, supabaseHeaders } from './stateStore.js';
@@ -112,5 +113,18 @@ export async function withConnection(profile: ClientProfile, o: WithConnectionOp
     const { connector: _left, ...rest } = profile;
     return rest as ClientProfile;
   }
-  return { ...profile, connector: connectorFromConnection(row) };
+  const connector = connectorFromConnection(row);
+  if (connector.type === 'git' && connector.installationId !== undefined) {
+    // The client connected through the engine's GitHub App: make sure this run has the app's id and key (kept in the Vault).
+    try {
+      await ensureAppCredentials({ env: o.env ?? process.env, ...(o.fetch ? { fetch: o.fetch } : {}), appIdEnv: connector.appIdEnv, privateKeyEnv: connector.privateKeyEnv });
+    } catch (e) {
+      const why = e instanceof Error ? e.message : String(e);
+      if (o.strict ?? true) throw new ConnectionError(`${row.label}: ${why}`);
+      console.warn(`${profile.id}: ${row.label}: ${why} Drafts will wait in the approval inbox.`);
+      const { connector: _left, ...rest } = profile;
+      return rest as ClientProfile;
+    }
+  }
+  return { ...profile, connector };
 }
