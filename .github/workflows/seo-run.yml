@@ -1,0 +1,64 @@
+# Scheduled article run: drafts articles for every client that is due and puts them in the approval inbox.
+#
+# To switch this on: on github.com open the seo-engine repository, choose Add file > Create new file, name it
+#   .github/workflows/seo-run.yml
+# paste this whole file in, and commit. (The assistant cannot write into .github/workflows, so a person adds it.)
+#
+# It runs once a day (06:23 UTC) and on demand (Actions > Scheduled article run > Run workflow).
+# A client is only written for when it is due under its own cadence (for example twice a week), so most days a
+# client is skipped. Memory (what was written, the change ledger, facts, AI usage) lives in Supabase.
+# If anything fails the run is marked failed, so GitHub emails you.
+#
+# Secrets used (repository Settings > Secrets and variables > Actions):
+#   SUPABASE_URL, SUPABASE_SERVICE_KEY   required: where the engine keeps its memory and the inbox
+#   GEMINI_API_KEY                       required for the default free AI (Google AI Studio key)
+#   SECRETS_JSON                         optional: connector passwords as one JSON object
+#   PAGESPEED_API_KEY, NOTIFY_WEBHOOK_URL  optional
+# Variables (optional): SEO_LLM (default gemini), SEO_MODEL (default gemini-3.8-flash)
+name: Scheduled article run
+on:
+  workflow_dispatch:
+    inputs:
+      dry:
+        description: "Tick to only list which clients are due, without writing anything."
+        type: boolean
+        default: false
+  schedule:
+    - cron: "23 6 * * *"
+permissions:
+  contents: read
+# One article run at a time. A manual run while the daily one is going waits its turn.
+concurrency:
+  group: seo-run
+  cancel-in-progress: false
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    env:
+      SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+      SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
+      SECRETS_JSON: ${{ secrets.SECRETS_JSON }}
+      GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+      PAGESPEED_API_KEY: ${{ secrets.PAGESPEED_API_KEY }}
+      NOTIFY_WEBHOOK_URL: ${{ secrets.NOTIFY_WEBHOOK_URL }}
+      SEO_LLM: ${{ vars.SEO_LLM || 'gemini' }}
+      SEO_MODEL: ${{ vars.SEO_MODEL || 'gemini-3.8-flash' }}
+      DRY: ${{ inputs.dry }}
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Install
+        run: npm install
+      - name: Write articles for clients that are due
+        run: |
+          if [ "$DRY" = "true" ]; then
+            npx tsx src/cli.ts run-all --dry
+          else
+            npx tsx src/cli.ts run-all
+          fi
