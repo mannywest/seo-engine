@@ -38,7 +38,10 @@ export async function handle(req: Request, env: Env, deps: Deps = {}): Promise<R
     // Messages from the database and GitHub helpers carry a status only, never a body or a key.
     console.error('connect request failed:', e instanceof Error ? e.message : 'unknown');
     // Only our own database and GitHub helpers add a hint (their messages are a step name and a status number, never a body or a key).
-    const hint = e instanceof DbError || e instanceof GithubError ? ` (${e.message})` : '';
+    // Anything else (a coding slip) shows its kind and a short message, with the service key blanked out if it ever appears.
+    const raw = e instanceof DbError || e instanceof GithubError ? e.message : e instanceof Error ? `${e.name}: ${e.message}`.slice(0, 160) : 'unknown error';
+    const key = env.SUPABASE_SERVICE_KEY?.trim();
+    const hint = ` (${key ? raw.split(key).join('[hidden]') : raw})`;
     return new Response(JSON.stringify({ error: `Something went wrong on our side. Please try again.${hint}`, code: 'server' }), { status: 500, headers: { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' } });
   }
   const known = new Set(['/api/connect/config', '/api/connect/github/start', '/api/connect/github/callback', '/api/connect/github/pending', '/api/connect/github/finish', '/api/connect/disconnect', '/api/admin/github-app/prepare', '/api/admin/github-app/created']);
