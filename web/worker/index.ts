@@ -1,4 +1,6 @@
 import { appCreated, config, contextFor, disconnect, finish, githubCallback, pending, prepareApp, startGithub } from './connect';
+import { GithubError } from './github';
+import { DbError } from './supabase';
 import type { Deps, Env } from './types';
 
 /**
@@ -35,7 +37,9 @@ export async function handle(req: Request, env: Env, deps: Deps = {}): Promise<R
   } catch (e) {
     // Messages from the database and GitHub helpers carry a status only, never a body or a key.
     console.error('connect request failed:', e instanceof Error ? e.message : 'unknown');
-    return new Response(JSON.stringify({ error: 'Something went wrong on our side. Please try again.', code: 'server' }), { status: 500, headers: { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' } });
+    // Only our own database and GitHub helpers add a hint (their messages are a step name and a status number, never a body or a key).
+    const hint = e instanceof DbError || e instanceof GithubError ? ` (${e.message})` : '';
+    return new Response(JSON.stringify({ error: `Something went wrong on our side. Please try again.${hint}`, code: 'server' }), { status: 500, headers: { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' } });
   }
   const known = new Set(['/api/connect/config', '/api/connect/github/start', '/api/connect/github/callback', '/api/connect/github/pending', '/api/connect/github/finish', '/api/connect/disconnect', '/api/admin/github-app/prepare', '/api/admin/github-app/created']);
   return new Response(JSON.stringify({ error: known.has(url.pathname) ? 'That address does not accept this kind of request.' : 'Not found.' }), {
