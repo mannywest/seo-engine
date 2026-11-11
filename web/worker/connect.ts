@@ -366,6 +366,7 @@ export async function contextFor(req: Request, env: Env, deps: Deps = {}): Promi
   const url = env.SUPABASE_URL?.trim();
   const key = env.SUPABASE_SERVICE_KEY?.trim();
   if (!url || !key) return json(503, { error: 'Connecting a website is not switched on yet: the site is missing its server settings.', code: 'not_configured' });
-  const f = deps.fetch ?? fetch;
+  // Wrapped so the real fetch is never called as a property of another object (Cloudflare: Illegal invocation).
+  const f: typeof fetch = deps.fetch ?? ((input, init) => fetch(input, init));
   return { db: new Db(url, key, f), key: await deriveStateKey(key), f, now: deps.now ?? (() => new Date()), origin: new URL(req.url).origin };
 }
