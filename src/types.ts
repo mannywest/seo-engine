@@ -42,6 +42,8 @@ export interface Source {
   title: string;
   url: string;
   snippet: string;
+  /** The whole page text. Used only by the checks (never sent to the AI) so a figure further down the page is not flagged as invented. */
+  fullText?: string;
 }
 
 export interface Draft {

@@ -27,6 +27,9 @@ export async function writeDraft(
       .map((l) => `${l.label} (${l.url})`)
       .join('; ')}.`,
     'Use ONLY facts found in the provided sources. Do not invent statistics, clients, quotes or results.',
+    'If a source describes a demo, calculator or sample data, call it a demo or an example ("in the demo", "for example"). Never call it live, and never present it as a real client or a real result.',
+    'Write plain English a busy shop owner could follow: short sentences (mostly under 20 words), everyday words, no jargon without a quick explanation.',
+    'Use British English spelling (organisation, prioritise, programme, colour).',
     `Never use these phrases: ${profile.bannedClaims.join('; ') || 'none'}.`,
     ...(vault ? [vault.promptBlock()] : []),
   ].join('\n');
