@@ -199,3 +199,53 @@ alter table public.history_entries enable row level security;
 alter table public.ledger_entries  enable row level security;
 alter table public.facts           enable row level security;
 alter table public.usage_entries   enable row level security;
+
+-- ---------------------------------------------------------------------------------------------
+-- Site connections (the "Connect your website" flow). One row per client says which kind of website they have
+-- and how the engine reaches it. The same table serves every platform: GitHub, WordPress, Wix, Shopify, a
+-- webhook or a folder. Adding a platform later means a new allowed value and a new connector, not a new table.
+--
+-- NO SECRETS HERE. `settings` holds only things that are safe to show the client (the repo name, the site
+-- address, GitHub's installation number). Keys and passwords live in the Supabase Vault or in the engine's
+-- environment; a row may at most name where to look. A check below refuses a row that looks like it holds one.
+--
+-- Read: a person sees only their own client's connection, so the Connect screen can show "Connected to ...".
+-- Write: nobody logged in can write, there is deliberately NO insert/update/delete policy. Only the server
+-- piece behind the Connect screen (which has proved who the person is and that they own the site) can.
+-- ---------------------------------------------------------------------------------------------
+create table if not exists public.site_connections (
+  client_id        text primary key references public.clients (id) on delete cascade,   -- one connection per client for now
+  platform         text not null check (platform in ('github', 'wordpress', 'wix', 'shopify', 'webhook', 'folder')),
+  status           text not null default 'connected' check (status in ('connected', 'needs_attention', 'disconnected')),
+  label            text not null,                  -- what the client sees, e.g. "owner/site"
+  settings         jsonb not null default '{}'::jsonb check (
+                     jsonb_typeof(settings) = 'object'
+                     and not (settings ?| array['token', 'password', 'secret', 'privateKey', 'private_key', 'apiKey', 'api_key', 'accessToken', 'access_token'])
+                   ),
+  connected_by     uuid references auth.users (id) on delete set null,
+  connected_at     timestamptz not null default now(),
+  updated_at       timestamptz not null default now(),
+  last_checked_at  timestamptz,
+  last_problem     text                            -- plain English, shown to the client when status is needs_attention
+);
+
+alter table public.site_connections enable row level security;
+
+drop policy if exists connections_read on public.site_connections;
+create policy connections_read on public.site_connections
+  for select to authenticated using (public.is_client_member(client_id));
+
+create or replace function public.site_connections_touch()
+returns trigger
+language plpgsql
+as $$
+begin
+  new.updated_at := now();
+  return new;
+end;
+$$;
+
+drop trigger if exists site_connections_touch on public.site_connections;
+create trigger site_connections_touch
+  before update on public.site_connections
+  for each row execute function public.site_connections_touch();

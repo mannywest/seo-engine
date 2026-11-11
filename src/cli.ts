@@ -1,6 +1,7 @@
 import { mkdir, readdir, readFile, writeFile } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
 import { createConnector } from './connectors/index.js';
+import { ConnectionError, withConnection } from './connections.js';
 import { FACT_KINDS, FactsVault, type FactKind } from './facts.js';
 import { History } from './history.js';
 import { decide, InboxError, publishApproved, type InboxStore } from './inbox.js';
@@ -122,7 +123,8 @@ async function cmdRunAll() {
   const dry = flag('dry');
   for (const f of files) {
     try {
-      const profile = await loadProfile(join('clients', f));
+      // A saved connection (from the Connect screen) beats the client file. If it needs attention, drafts still reach the inbox.
+      const profile = await withConnection(await loadProfile(join('clients', f)), { strict: false });
       const history = await History.open(profile.id);
       if (!history.isDue(profile.publish.cadencePerWeek)) {
         console.log(`skip  ${profile.id}: not due yet`);
@@ -178,11 +180,20 @@ async function cmdOnboard(url: string) {
 }
 
 async function cmdCheck(profilePath: string) {
-  const profile = await loadProfile(profilePath);
+  let profile = await loadProfile(profilePath);
   const problems: string[] = [];
+  try {
+    profile = await withConnection(profile);
+  } catch (e) {
+    if (!(e instanceof ConnectionError)) throw e;
+    problems.push(e.message);
+    const { connector: _left, ...rest } = profile;
+    profile = rest as ClientProfile;
+  }
   if (!profile.keywords.length) problems.push('No keywords in the client file.');
-  if (!profile.connector) problems.push('No connector: articles can be written but not delivered.');
-  else problems.push(...(await createConnector(profile.connector).check()));
+  if (!profile.connector) {
+    if (!problems.length) problems.push('No connector: articles can be written but not delivered.');
+  } else problems.push(...(await createConnector(profile.connector).check()));
   if (problems.length) {
     console.log(`${profile.id}: ${problems.length} thing(s) to fix`);
     for (const p of problems) console.log(`  - ${p}`);
@@ -319,7 +330,7 @@ async function cmdFacts(target: string) {
 const LEDGER_STATUS = { applied: 'done', reverted: 'undone', revert_pending: 'undo waiting for approval', revert_failed: 'undo failed' } as const;
 
 async function cmdLedger(target: string) {
-  const profile = await loadProfile(target);
+  const profile = await withConnection(await loadProfile(target), { strict: !!arg('revert') });
   const ledger = await Ledger.open(profile.id);
   const id = arg('revert');
   if (id) {
@@ -343,7 +354,14 @@ async function cmdLedger(target: string) {
 const INBOX_LABEL = { waiting: 'waiting', approved: 'approved', rejected: 'rejected', published: 'published', publish_failed: 'approved, delivery failed' } as const;
 
 /** Sends one client's approved articles out through its connector and records them in the change ledger. */
-async function publishFor(profile: ClientProfile, store: InboxStore) {
+async function publishFor(fileProfile: ClientProfile, store: InboxStore) {
+  let profile: ClientProfile;
+  try {
+    profile = await withConnection(fileProfile);
+  } catch (e) {
+    if (e instanceof ConnectionError) throw new InboxError(e.message);
+    throw e;
+  }
   if (!profile.connector) throw new InboxError('This client has no connector, so there is nowhere to publish to.');
   const ledger = await Ledger.open(profile.id);
   const results = await publishApproved(store, profile, createConnector(profile.connector), ledger);
