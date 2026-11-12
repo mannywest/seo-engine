@@ -142,9 +142,9 @@ describe('fallback between AIs', () => {
   it('builds a chain from --fallback and skips backups with no key', () => {
     const env = { GEMINI_API_KEY: 'g', GROQ_API_KEY: 'q' } as unknown as NodeJS.ProcessEnv;
     const chain = chooseLlm({ llm: 'gemini', fallback: ['groq', 'openrouter', 'gemini'] }, env);
-    expect(chain.name).toBe('openai-compatible -> openai-compatible');
+    expect(chain.name).toBe('gemini -> groq');
     const single = chooseLlm({ llm: 'gemini', fallback: ['openrouter'] }, env);
-    expect(single.name).toBe('openai-compatible');
+    expect(single.name).toBe('gemini');
   });
 });
 

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { chooseLlm } from '../src/providers/choose.js';
+import { chooseLlm, PRESETS } from '../src/providers/choose.js';
 import { FallbackProvider } from '../src/providers/fallback.js';
 import { parseFallbackList, parseSecretsBlob } from '../src/secrets.js';
 
@@ -32,5 +32,15 @@ describe('backup AIs', () => {
     expect(withKey).toBeInstanceOf(FallbackProvider);
     const noKey = chooseLlm({ llm: 'gemini', fallback: parseFallbackList(undefined) }, { GEMINI_API_KEY: 'g' } as NodeJS.ProcessEnv);
     expect(noKey).not.toBeInstanceOf(FallbackProvider);
+  });
+});
+
+describe('naming the AIs in the log', () => {
+  it('calls each AI by its own name so a backup taking over reads clearly', () => {
+    const p = chooseLlm({ llm: 'gemini', fallback: ['groq'] }, { GEMINI_API_KEY: 'g', GROQ_API_KEY: 'q' } as NodeJS.ProcessEnv);
+    expect(p.name).toBe('gemini -> groq');
+  });
+  it('asks Groq for a model it still has (llama-3.3-70b-versatile was retired in August 2026)', () => {
+    expect(PRESETS.groq!.model).toBe('openai/gpt-oss-120b');
   });
 });

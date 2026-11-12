@@ -11,9 +11,9 @@ export interface LlmChoice {
   fallback?: string[];
 }
 
-const PRESETS: Record<string, { baseUrl: string; model: string; keyEnv: string }> = {
+export const PRESETS: Record<string, { baseUrl: string; model: string; keyEnv: string }> = {
   gemini: { baseUrl: 'https://generativelanguage.googleapis.com/v1beta/openai', model: 'gemini-3.8-flash', keyEnv: 'GEMINI_API_KEY' },
-  groq: { baseUrl: 'https://api.groq.com/openai/v1', model: 'llama-3.3-70b-versatile', keyEnv: 'GROQ_API_KEY' },
+  groq: { baseUrl: 'https://api.groq.com/openai/v1', model: 'openai/gpt-oss-120b', keyEnv: 'GROQ_API_KEY' },
   openrouter: { baseUrl: 'https://openrouter.ai/api/v1', model: 'meta-llama/llama-3.3-70b-instruct:free', keyEnv: 'OPENROUTER_API_KEY' },
 };
 
@@ -43,7 +43,7 @@ function chooseOne(c: LlmChoice, env = process.env): LlmProvider {
   if (preset) {
     const key = env[preset.keyEnv];
     if (!key) throw new Error(`${c.llm} needs ${preset.keyEnv} (a free key from that service).`);
-    return new OpenAiCompatProvider(key, c.model ?? preset.model, c.baseUrl ?? preset.baseUrl);
+    return new OpenAiCompatProvider(key, c.model ?? preset.model, c.baseUrl ?? preset.baseUrl, undefined, undefined, undefined, c.llm);
   }
   if (c.llm === 'openai-compatible') {
     const key = env.LLM_API_KEY;

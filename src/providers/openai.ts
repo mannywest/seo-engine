@@ -20,7 +20,7 @@ const MAX_TIMEOUTS = 2;
  * This is how a scheduled run in the cloud can write articles without paying per article.
  */
 export class OpenAiCompatProvider implements LlmProvider {
-  readonly name = 'openai-compatible';
+  readonly name: string;
   constructor(
     private apiKey: string,
     private model: string,
@@ -28,7 +28,11 @@ export class OpenAiCompatProvider implements LlmProvider {
     private fetchFn: typeof fetch = fetch,
     private retry: RetryOptions = {},
     private timeoutMs: number = DEFAULT_REQUEST_TIMEOUT_MS,
-  ) {}
+    /** What the logs call this AI (for example gemini or groq), so a backup taking over reads clearly. */
+    label = 'openai-compatible',
+  ) {
+    this.name = label;
+  }
 
   /**
    * If the AI runs out of room before it finishes ("length"), ask again with double the room, up to twice.

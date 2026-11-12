@@ -84,7 +84,7 @@ describe('llm choice', () => {
   it('explains missing keys and unknown names', () => {
     expect(() => chooseLlm({ llm: 'gemini' }, {})).toThrow(/GEMINI_API_KEY/);
     expect(() => chooseLlm({ llm: 'nope' }, {})).toThrow(/Unknown/);
-    expect(chooseLlm({ llm: 'groq' }, { GROQ_API_KEY: 'k' }).name).toBe('openai-compatible');
+    expect(chooseLlm({ llm: 'groq' }, { GROQ_API_KEY: 'k' }).name).toBe('groq');
   });
   it('openai-compatible provider reads the reply', async () => {
     const f = (async () => ({ ok: true, json: async () => ({ choices: [{ message: { content: 'hi' } }] }) })) as unknown as typeof fetch;
