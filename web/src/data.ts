@@ -1,12 +1,14 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { parseRow } from './rows';
-import { approved, checkApprove, checkReject, rejected } from './rules';
+import { approved, checkApprove, checkReject, checkSave, rejected, saved } from './rules';
 import type { InboxItem } from './types';
 
 /** Where the screen gets its articles and sends decisions. Two kinds: the real database, and a demo. */
 export interface InboxSource {
   mode: 'live' | 'demo';
   list(): Promise<InboxItem[]>;
+  /** Keeps edits as a draft. The article stays waiting; nothing is approved. */
+  save(item: InboxItem, body: string): Promise<InboxItem>;
   approve(item: InboxItem, editedBody?: string): Promise<InboxItem>;
   reject(item: InboxItem, note?: string): Promise<InboxItem>;
 }
@@ -20,6 +22,12 @@ export class LiveSource implements InboxSource {
     const { data, error } = await this.db.from('inbox_items').select('*').order('added_at', { ascending: true }).order('id', { ascending: true });
     if (error) throw new Error(`Could not load your articles: ${error.message}`);
     return (data ?? []).map(parseRow);
+  }
+
+  async save(item: InboxItem, body: string): Promise<InboxItem> {
+    checkSave(item, body);
+    // Only the text is sent. The status is left alone, so the article stays waiting.
+    return this.update(item, { body });
   }
 
   async approve(item: InboxItem, editedBody?: string): Promise<InboxItem> {
@@ -74,6 +82,10 @@ export class DemoSource implements InboxSource {
   async list() {
     await this.pause();
     return this.items.map((i) => ({ ...i }));
+  }
+  async save(item: InboxItem, body: string) {
+    await this.pause();
+    return this.put(saved(this.find(item.id), { body }));
   }
   async approve(item: InboxItem, editedBody?: string) {
     await this.pause();
