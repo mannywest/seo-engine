@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { platformAdvice, type Platform } from '../worker/sitecheck';
-import { allCopy, AVAILABILITY_LABEL, builtWithLine, CONNECTORS, FAQ, groupFindings, HERO, PROMISES, PROOF, STEPS, summaryLine, type FindingView } from '../src/landingCopy';
+import { allCopy, AVAILABILITY_LABEL, builtWithLine, CONNECTORS, FAQ, groupFindings, HERO, PRICE_PLACEHOLDER, PRICES, PRICES_NOTE, PROMISES, PROOF, SERVICES, STEPS, summaryLine, type FindingView } from '../src/landingCopy';
 import { arrivingFromLink, wantsDemo } from '../src/route';
 
 describe('what the front page says', () => {
@@ -18,13 +18,33 @@ describe('what the front page says', () => {
   });
 
   it('says plainly that approval comes first, and that AI is used', () => {
-    expect(HERO.headline).toMatch(/nothing goes live until you say so/i);
+    expect(HERO.headline).toMatch(/we write, you approve/i);
+    expect(HERO.lead).toMatch(/nothing goes live until you say so/i);
     expect(FAQ.find((f) => /ai writing/i.test(f.q))?.a).toMatch(/^Yes/);
   });
 
   it('does not set a price or claim a free trial it has not decided on', () => {
     expect(copy).not.toMatch(/[£$€]\s?\d|per month|\/mo\b|free trial|money.back/);
     expect(FAQ.find((f) => /cost/i.test(f.q))?.a).toMatch(/not set prices yet/i);
+  });
+
+  it('shows a clearly marked placeholder for every paid price, and only the free check as free', () => {
+    const paid = PRICES.filter((p) => p.price !== 'Free');
+    expect(paid.length).toBeGreaterThan(0);
+    for (const p of paid) expect(p.price).toBe(PRICE_PLACEHOLDER);
+    expect(PRICE_PLACEHOLDER).toBe('[YOUR PRICE]');
+    const free = PRICES.filter((p) => p.price === 'Free');
+    expect(free.map((p) => p.name)).toEqual(['Free website check']);
+    expect(PRICES_NOTE).toMatch(/not set yet/i);
+    expect(PRICES_NOTE).toMatch(/not be charged without agreeing/i);
+  });
+
+  it('lists as available today only what really works today, and WordPress as coming next', () => {
+    expect(SERVICES.today.map((s) => s.title)).toEqual(['Articles for your website', 'A free website check', 'Publishing']);
+    expect(SERVICES.next.map((s) => s.title)).toEqual(['WordPress']);
+    const today = JSON.stringify(SERVICES.today).toLowerCase();
+    expect(today).not.toMatch(/wordpress|shopify|wix|squarespace|google business|review|social|email marketing/);
+    expect(JSON.stringify(SERVICES.today)).toMatch(/approve/i);
   });
 
   it('only claims "Works today" for the kind of site that really works today', () => {

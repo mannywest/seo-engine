@@ -16,11 +16,39 @@ export const PROOF = {
 };
 
 export const HERO = {
-  headline: 'Fresh articles for your website. Nothing goes live until you say so.',
-  lead: 'Type your website address. We look at your home page and tell you what we see in plain English. It takes a few seconds, costs nothing, and does not ask for a card.',
-  button: 'Check my site',
+  headline: 'Get found by more customers. We write, you approve.',
+  lead: 'We write articles for your website. Nothing goes live until you say so.',
+  checkHint: 'Type your website address and we will tell you what we see, in plain English. It is free and does not ask for a card.',
+  button: 'Get my free site check',
   working: 'Looking at your site…',
 };
+
+/** The marker every placeholder price carries, so one search finds each of them before the page goes public. */
+export const PRICE_PLACEHOLDER = '[YOUR PRICE]';
+
+/**
+ * What the service really does today and what is next. Anything not built is not listed as available: the rest of the
+ * service catalogue stays off this page until it works.
+ */
+export const SERVICES: {
+  today: { title: string; text: string }[];
+  next: { title: string; text: string }[];
+} = {
+  today: [
+    { title: 'Articles for your website', text: 'Written from your own site and notes. You read, edit and approve every one.' },
+    { title: 'A free website check', text: 'Type your address and we tell you what we see on your home page, in plain English.' },
+    { title: 'Publishing', text: 'One tap for sites built from code files on GitHub. For any other site, copy or download each approved article.' },
+  ],
+  next: [{ title: 'WordPress', text: 'One-tap connecting to WordPress sites is next on our list.' }],
+};
+
+/** Prices are not decided. Each paid line carries the placeholder, never a made-up number. */
+export const PRICES: { name: string; text: string; price: string }[] = [
+  { name: 'Free website check', text: 'Type your address and read the result. No card and no sign-up.', price: 'Free' },
+  { name: 'Articles for your website, approved by you', text: 'Written for your site. You read, edit and approve every one.', price: PRICE_PLACEHOLDER },
+];
+
+export const PRICES_NOTE = 'Prices are not set yet. You will not be charged without agreeing to a price first.';
 
 /** A real sequence, so these are numbered. */
 export const STEPS = [
@@ -132,5 +160,5 @@ export function builtWithLine(site: string, platform: string, platformName: stri
  * purpose: they are the visitor's own words ("Will this get me to the top of Google?"), and the answer is what we claim.
  */
 export function allCopy(): string {
-  return JSON.stringify([HERO, STEPS, PROMISES, CONNECTORS, FAQ.map((f) => f.a), CONSENT_TEXT, PRIVACY, AVAILABILITY_LABEL, PROOF.title]);
+  return JSON.stringify([HERO, STEPS, SERVICES, PRICES, PRICES_NOTE, PROMISES, CONNECTORS, FAQ.map((f) => f.a), CONSENT_TEXT, PRIVACY, AVAILABILITY_LABEL, PROOF.title]);
 }

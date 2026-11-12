@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import {
-  AVAILABILITY_LABEL, BRAND, builtWithLine, CONNECTORS, CONSENT_TEXT, FAQ, groupFindings, HERO, PRIVACY, PROMISES, PROOF, STEPS, summaryLine,
+  AVAILABILITY_LABEL, BRAND, builtWithLine, CONNECTORS, CONSENT_TEXT, FAQ, groupFindings, HERO, PRICES, PRICES_NOTE, PRIVACY, PROMISES, PROOF, SERVICES, STEPS, summaryLine,
   type FindingView,
 } from './landingCopy';
 import { checkSite, joinWaitingList, PREVIEW, type SiteReport } from './publicApi';
@@ -14,6 +14,7 @@ export function Landing({ signInHref }: { signInHref: string }) {
   const [report, setReport] = useState<SiteReport>();
   const [state, setState] = useState<'idle' | 'checking'>('idle');
   const [problem, setProblem] = useState<string>();
+  const siteInput = useRef<HTMLInputElement>(null);
   // Arriving from the sample inbox with #join: the form did not exist when the browser looked for it, so scroll once it does.
   useEffect(() => {
     if (window.location.hash === '#join') document.getElementById('join')?.scrollIntoView();
@@ -21,7 +22,9 @@ export function Landing({ signInHref }: { signInHref: string }) {
 
   async function run(e: React.FormEvent) {
     e.preventDefault();
-    if (!address.trim() || state === 'checking') return;
+    if (state === 'checking') return;
+    // The button stays bright green. With an empty box, pressing it simply takes you to the box.
+    if (!address.trim()) return void siteInput.current?.focus();
     setState('checking');
     setProblem(undefined);
     setReport(undefined);
@@ -38,15 +41,21 @@ export function Landing({ signInHref }: { signInHref: string }) {
         <div className="lp-wrap">
           <header className="lp-top">
             <div className="brand"><span className="star" aria-hidden="true">✦</span> {BRAND}</div>
-            <a className="lp-signin" href={signInHref}>Sign in</a>
+            <nav className="lp-nav" aria-label="Page sections">
+              <a href="#services">Services</a>
+              <a href="#prices">Prices</a>
+              <a className="lp-signin" href={signInHref}>Sign in</a>
+            </nav>
           </header>
           <h1>{HERO.headline}</h1>
           <p className="lp-lead">{HERO.lead}</p>
           <form className="lp-check" onSubmit={run} noValidate>
             <label htmlFor="site">Your website address</label>
+            <p className="lp-hint">{HERO.checkHint}</p>
             <div className="lp-check-row">
               <input
                 id="site"
+                ref={siteInput}
                 type="text"
                 inputMode="url"
                 autoCapitalize="none"
@@ -57,7 +66,7 @@ export function Landing({ signInHref }: { signInHref: string }) {
                 value={address}
                 onChange={(e) => setAddress(e.target.value)}
               />
-              <button className="btn primary" disabled={state === 'checking' || !address.trim()}>{state === 'checking' ? HERO.working : HERO.button}</button>
+              <button className="btn primary" disabled={state === 'checking'}>{state === 'checking' ? HERO.working : HERO.button}</button>
             </div>
           </form>
           <div aria-live="polite">
@@ -79,6 +88,47 @@ export function Landing({ signInHref }: { signInHref: string }) {
                 </li>
               ))}
             </ol>
+          </div>
+        </section>
+
+        <section className="lp-section lp-tint" id="services" aria-labelledby="servicesh">
+          <div className="lp-wrap">
+            <h2 id="servicesh">What we do for you</h2>
+            <h3 className="lp-group"><span className="chip good">Available today</span></h3>
+            <ul className="lp-cards">
+              {SERVICES.today.map((s) => (
+                <li key={s.title}>
+                  <strong>{s.title}</strong>
+                  <span>{s.text}</span>
+                </li>
+              ))}
+            </ul>
+            <h3 className="lp-group"><span className="chip warn">Coming next</span></h3>
+            <ul className="lp-cards">
+              {SERVICES.next.map((s) => (
+                <li key={s.title}>
+                  <strong>{s.title}</strong>
+                  <span>{s.text}</span>
+                </li>
+              ))}
+            </ul>
+          </div>
+        </section>
+
+        <section className="lp-section" id="prices" aria-labelledby="pricesh">
+          <div className="lp-wrap">
+            <h2 id="pricesh">Prices</h2>
+            <ul className="lp-cards lp-prices">
+              {PRICES.map((p) => (
+                <li key={p.name}>
+                  <strong>{p.name}</strong>
+                  <span>{p.text}</span>
+                  <span className={p.price === 'Free' ? 'lp-price free' : 'lp-price tbc'}>{p.price}</span>
+                </li>
+              ))}
+            </ul>
+            <p className="muted small">{PRICES_NOTE}</p>
+            <p><a className="btn primary" href="#join">Join the waiting list</a></p>
           </div>
         </section>
 
