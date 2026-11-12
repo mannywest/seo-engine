@@ -12,6 +12,7 @@ import { UsageLog } from './usage.js';
 import { notify } from './notify.js';
 import { chooseLlm } from './providers/choose.js';
 import { describeError } from './retry.js';
+import { parseFallbackList, parseSecretsBlob } from './secrets.js';
 import { loadProfile, runClient } from './runClient.js';
 import { fetchGscQueries } from './seo/gscApi.js';
 import { onboardSite } from './seo/onboard.js';
@@ -90,9 +91,8 @@ const USAGE = `seo-engine commands (all free to run except --llm anthropic):
 `;
 
 /** Backup AIs from --fallback groq,openrouter or the SEO_FALLBACK setting. */
-function fallbackList(): string[] | undefined {
-  const v = arg('fallback', process.env.SEO_FALLBACK);
-  return v ? v.split(',').map((x) => x.trim()).filter(Boolean) : undefined;
+function fallbackList(): string[] {
+  return parseFallbackList(arg('fallback', process.env.SEO_FALLBACK));
 }
 
 async function cmdRun(profilePath: string) {
@@ -278,13 +278,7 @@ async function cmdSite(profilePath: string) {
 
 /** GitHub Actions can hand us every repository secret as one JSON blob, so adding a client's key never needs a workflow edit. */
 function loadSecretsBlob() {
-  const blob = process.env.SECRETS_JSON;
-  if (!blob) return;
-  try {
-    for (const [k, v] of Object.entries(JSON.parse(blob) as Record<string, string>)) if (process.env[k] === undefined) process.env[k] = v;
-  } catch {
-    /* ignore a malformed blob */
-  }
+  for (const [k, v] of Object.entries(parseSecretsBlob(process.env.SECRETS_JSON))) if (process.env[k] === undefined) process.env[k] = v;
 }
 
 async function cmdReceipt(target: string) {
