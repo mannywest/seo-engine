@@ -1,0 +1,93 @@
+/* The public front page. Uses the colours and fonts already set in styles.css so it feels like the same product as the inbox.
+   Everything is under .lp so nothing here can change the inbox screens. */
+
+.lp { --night: #12142B; --night-ink: #ECEBF5; --night-muted: #B8BBDD; --night-line: #2E3366; padding-bottom: 0; }
+.lp .banner { margin: 0; }
+.lp-wrap { max-width: 40rem; margin: 0 auto; padding: 0 16px; }
+
+/* The top of the page is always the night sky, whatever the phone's light or dark setting. */
+.lp-hero { background: var(--night); color: var(--night-ink); padding: 8px 0 40px; position: relative; overflow: hidden; }
+.lp-hero::after {
+  content: ''; position: absolute; right: -60px; top: 60px; width: 240px; height: 240px; opacity: .1; pointer-events: none;
+  background: var(--gold); clip-path: polygon(50% 0, 60% 40%, 100% 50%, 60% 60%, 50% 100%, 40% 60%, 0 50%, 40% 40%);
+}
+.lp-hero .lp-wrap { position: relative; z-index: 1; }
+.lp-top { display: flex; justify-content: space-between; align-items: center; padding: 14px 0 28px; }
+.lp-hero .brand { color: var(--night-ink); }
+.lp-signin { color: var(--night-ink); font-weight: 600; text-decoration: none; padding: 10px 4px; min-height: 44px; display: inline-flex; align-items: center; }
+.lp-signin:hover { text-decoration: underline; }
+.lp-hero h1 { font-size: clamp(1.9rem, 7.5vw, 2.9rem); line-height: 1.1; letter-spacing: -0.01em; max-width: 16em; margin: 0 0 16px; font-variation-settings: 'opsz' 96; }
+.lp-lead { color: var(--night-muted); font-size: 1.05rem; line-height: 1.55; max-width: 34em; margin: 0 0 24px; }
+
+.lp-check label { color: var(--night-ink); margin: 0 0 6px; }
+.lp-check-row { display: flex; gap: 8px; flex-wrap: wrap; }
+.lp-check-row input { flex: 1 1 14rem; background: #fff; color: #1A1F45; border-color: transparent; font-size: 1.05rem; }
+.lp-check-row input::placeholder { color: #6B7099; }
+.lp-hero .btn.primary { background: var(--gold); color: #1A1F45; border-color: var(--gold); flex: 0 0 auto; }
+.lp-hero .btn.primary:disabled { opacity: .6; }
+.lp-hero .btn:focus-visible, .lp-hero input:focus-visible, .lp-signin:focus-visible { outline: 3px solid #fff; outline-offset: 2px; }
+.lp-problem { margin: 16px 0 0; padding: 12px 14px; border-radius: var(--radius); background: var(--bad-bg); color: var(--bad); font-weight: 500; }
+
+/* The report lands inside the hero: the product, shown rather than described. */
+.lp-report { margin-top: 24px; background: var(--card); color: var(--ink); border-radius: var(--radius); padding: 18px 16px; }
+.lp-report h2 { font-size: 1.25rem; margin: 0 0 6px; outline: none; }
+.lp-summary { font-weight: 600; margin: 0 0 14px; }
+.lp-findings { list-style: none; margin: 0 0 14px; padding: 0; display: grid; gap: 14px; }
+.lp-findings li { display: grid; gap: 2px; justify-items: start; }
+.lp-findings .muted { font-size: .92rem; }
+.lp-fine { margin: 0 0 14px; }
+.lp-fine summary, .lp-faq summary { cursor: pointer; font-weight: 600; min-height: 44px; display: flex; align-items: center; }
+.lp-advice { border-top: 1px solid var(--line); padding-top: 14px; margin-bottom: 8px; }
+.lp-advice p { margin: 8px 0 0; }
+.lp-report .btn { display: inline-flex; align-items: center; justify-content: center; text-decoration: none; }
+@media (prefers-reduced-motion: no-preference) {
+  .lp-report { animation: lp-in .35s ease-out; }
+  @keyframes lp-in { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
+}
+
+/* The rest of the page is quiet, so the hero is the thing you remember. */
+.lp-section { padding: 40px 0; }
+.lp-tint { background: color-mix(in srgb, var(--card) 70%, var(--ground)); border-block: 1px solid var(--line); }
+.lp-section h2 { font-size: 1.5rem; margin: 0 0 12px; }
+.lp-section p { max-width: 34em; }
+.lp .btn { display: inline-flex; align-items: center; justify-content: center; text-decoration: none; flex: none; }
+
+.lp-steps { list-style: none; margin: 0; padding: 0; display: grid; gap: 20px; counter-reset: step; }
+.lp-steps li { counter-increment: step; display: grid; grid-template-columns: 2.25rem 1fr; column-gap: 12px; }
+.lp-steps li::before { content: counter(step); grid-row: 1 / span 2; width: 2.25rem; height: 2.25rem; border-radius: 50%; border: 2px solid var(--gold); display: grid; place-items: center; font-family: Fraunces, Georgia, serif; font-weight: 700; }
+.lp-steps h3 { margin: 4px 0 2px; font-size: 1.05rem; }
+.lp-steps p { margin: 0; color: var(--muted); }
+
+.lp-mock { background: var(--card); border: 1px solid var(--line); border-radius: var(--radius); padding: 14px; margin: 16px 0; display: grid; gap: 10px; justify-items: start; max-width: 22rem; }
+.lp-mock-title { font-weight: 600; }
+.lp-mock-actions { display: flex; gap: 8px; width: 100%; }
+.lp-mock-actions span { flex: 1; text-align: center; padding: 10px 0; border: 1px solid var(--line); border-radius: 12px; font-weight: 600; font-size: .9rem; }
+.lp-mock-actions .on { background: var(--accent); border-color: var(--accent); color: var(--on-accent); }
+
+.lp-defs { margin: 0; display: grid; gap: 18px; }
+.lp-defs div { display: grid; gap: 4px; }
+.lp-defs dt { font-weight: 600; }
+.lp-defs dd { margin: 0; color: var(--muted); max-width: 34em; }
+.lp-sites dt { display: flex; flex-wrap: wrap; gap: 4px 10px; align-items: center; }
+
+.lp-join { display: grid; gap: 4px; max-width: 28rem; margin-top: 16px; }
+.lp-join .btn { margin-top: 12px; flex: none; }
+.lp-hp { position: absolute; left: -10000px; width: 1px; height: 1px; overflow: hidden; }
+.lp-consent { display: flex; gap: 10px; align-items: flex-start; font-weight: 400; margin: 12px 0 0; }
+.lp-consent input { width: 22px; height: 22px; min-height: 0; padding: 0; margin-top: 2px; flex: none; accent-color: var(--accent); }
+.lp-done { background: var(--good-bg); color: var(--ink); border-radius: var(--radius); padding: 16px; max-width: 28rem; margin-top: 16px; }
+.lp-done h3 { color: var(--good); }
+.lp-done p { margin: 0; }
+
+.lp-faq { display: grid; gap: 4px; }
+.lp-faq details { border-bottom: 1px solid var(--line); }
+.lp-faq details p { margin: 0 0 14px; color: var(--muted); }
+.lp-faq summary:focus-visible, .lp-fine summary:focus-visible, .lp a:focus-visible { outline: 3px solid var(--gold); outline-offset: 2px; }
+.lp-plain { margin: 0 0 12px; padding-left: 1.1rem; display: grid; gap: 8px; max-width: 34em; }
+.lp-foot { padding: 24px 0 40px; }
+.lp-foot p { margin: 0; }
+
+/* A bar above the sample inbox, so the demo always says what it is and where to go next. */
+.lp-demo-bar { position: sticky; top: 0; z-index: 5; background: var(--night, #12142B); color: #ECEBF5; padding: 10px 16px; display: flex; gap: 12px; align-items: center; justify-content: space-between; flex-wrap: wrap; font-size: .9rem; }
+.lp-demo-bar a { color: var(--gold); font-weight: 600; }
+.lp-demo-bar .lp-demo-links { display: flex; gap: 16px; }
