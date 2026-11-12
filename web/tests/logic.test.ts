@@ -201,3 +201,48 @@ describe('keeping the powerful key out of the web app', () => {
     expect(isServiceKey('')).toBe(false);
   });
 });
+
+describe('saving edits as a draft', () => {
+  it('the demo keeps it waiting, marks it edited, and nobody has decided', async () => {
+    const d = new DemoSource(items());
+    const r = await d.save(byId('ceramic-coating-worth-it'), 'Fixed text.');
+    expect(r).toMatchObject({ status: 'waiting', edited: true, body: 'Fixed text.' });
+    expect(r).not.toHaveProperty('decidedAt');
+    expect(r).not.toHaveProperty('decidedBy');
+    expect((await d.list()).find((i) => i.id === 'ceramic-coating-worth-it')).toMatchObject({ status: 'waiting', body: 'Fixed text.' });
+  });
+  it('a saved draft can be approved later and keeps the saved text', async () => {
+    const d = new DemoSource(items(), { now: () => NOW });
+    const first = await d.save(byId('ceramic-coating-worth-it'), 'Saved earlier.');
+    const approvedItem = await d.approve(first, first.body);
+    expect(approvedItem).toMatchObject({ status: 'approved', body: 'Saved earlier.', decidedBy: 'you@demo' });
+  });
+  it('refuses empty text, no change, and articles that are not waiting', async () => {
+    const d = new DemoSource(items());
+    const waiting = byId('ceramic-coating-worth-it');
+    await expect(d.save(waiting, '  ')).rejects.toThrow(/empty/);
+    await expect(d.save(waiting, waiting.body)).rejects.toThrow(/nothing new/);
+    await expect(d.save(byId('winter-wash-tips'), 'x')).rejects.toThrow(/already published/);
+    await d.reject(waiting);
+    await expect(d.save({ ...waiting, status: 'rejected' }, 'new text')).rejects.toThrow(/still waiting/);
+  });
+  it('the live source sends only the new text, never a status', async () => {
+    const { source, seen } = pretendSupabase([row()]);
+    await source.save(parseRow(row()), 'Better text.');
+    const patch = seen.find((c) => c.method === 'PATCH')!;
+    expect(patch.body).toEqual({ body: 'Better text.' });
+    expect(patch.url.searchParams.get('client_id')).toBe('eq.c1');
+    expect(patch.url.searchParams.get('id')).toBe('eq.a');
+  });
+  it('the live source checks first, so bad saves never reach the database', async () => {
+    const { source, seen } = pretendSupabase([row()]);
+    await expect(source.save(parseRow(row()), '   ')).rejects.toThrow(RuleError);
+    await expect(source.save(parseRow(row()), 'Body')).rejects.toThrow(RuleError);
+    await expect(source.save(parseRow(row({ status: 'approved' })), 'New')).rejects.toThrow(/still waiting/);
+    expect(seen.some((c) => c.method === 'PATCH')).toBe(false);
+  });
+  it('a refusal from the database comes through in plain words', async () => {
+    const refused = pretendSupabase([row()], { status: 400, message: 'Only an article that is still waiting can be saved as a draft.' });
+    await expect(refused.source.save(parseRow(row()), 'New')).rejects.toThrow(/Could not save that: Only an article that is still waiting/);
+  });
+});

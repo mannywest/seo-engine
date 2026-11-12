@@ -88,9 +88,10 @@ create policy inbox_decide on public.inbox_items
   using (public.is_client_member(client_id))
   with check (public.is_client_member(client_id));
 
--- The guard. A logged-in person may only: approve or reject an article that is not yet published, and
--- (when approving) correct its text. Everything else on the row is read-only to them. Who decided and
--- when are stamped by the database, so they cannot be faked from the web page.
+-- The guard. A logged-in person may only: approve or reject an article that is not yet published, correct its
+-- text when approving, or save a text correction as a draft (the article stays waiting, nobody has decided).
+-- Everything else on the row is read-only to them. Who decided and when are stamped by the database, so they
+-- cannot be faked from the web page.
 -- The engine (service key) is not restricted, so it can record delivery results.
 create or replace function public.inbox_items_guard()
 returns trigger
@@ -106,8 +107,11 @@ begin
   if old.status = 'published' then
     raise exception 'That article is already published.' using errcode = 'check_violation';
   end if;
-  if new.status not in ('approved', 'rejected') then
-    raise exception 'You can only approve or reject an article.' using errcode = 'check_violation';
+  if new.status = 'waiting' and old.status <> 'waiting' then
+    raise exception 'Only an article that is still waiting can be saved as a draft.' using errcode = 'check_violation';
+  end if;
+  if new.status not in ('waiting', 'approved', 'rejected') then
+    raise exception 'You can only approve, reject or save an article.' using errcode = 'check_violation';
   end if;
 
   if new.client_id is distinct from old.client_id
@@ -124,6 +128,20 @@ begin
      or new.delivery_note is distinct from old.delivery_note
      or new.ledger_id is distinct from old.ledger_id then
     raise exception 'Only the decision and the text can be changed.' using errcode = 'check_violation';
+  end if;
+
+  -- Saving a draft: the text may change, the article stays waiting, and nobody has decided yet.
+  if new.status = 'waiting' then
+    if btrim(new.body) = '' then
+      raise exception 'The edited text is empty.' using errcode = 'check_violation';
+    end if;
+    if new.body is distinct from old.body then
+      new.edited := true;
+    end if;
+    new.decided_at := old.decided_at;
+    new.decided_by := old.decided_by;
+    new.note := old.note;
+    return new;
   end if;
 
   if new.status = 'rejected' and new.body is distinct from old.body then

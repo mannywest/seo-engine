@@ -134,6 +134,11 @@ function Inbox({ source, email, onSignOut, onOpenConnect }: { source: InboxSourc
   const open = items?.find((i) => i.id === openId);
   const counts = (t: Tab) => (items ?? []).filter((i) => tabOf(i) === t).length;
 
+  /** A saved draft updates the article in the list but keeps the person on it. */
+  function savedDraft(next: InboxItem) {
+    setItems((cur) => cur?.map((i) => (i.id === next.id ? next : i)) ?? null);
+  }
+
   function decided(next: InboxItem, text: string) {
     setItems((cur) => cur?.map((i) => (i.id === next.id ? next : i)) ?? null);
     setOpenId(undefined);
@@ -151,7 +156,7 @@ function Inbox({ source, email, onSignOut, onOpenConnect }: { source: InboxSourc
     return (
       <main className="shell">
         <Header demo={source.mode === 'demo'} right={right} />
-        <Review key={open.id} item={open} source={source} onBack={() => setOpenId(undefined)} onDecided={decided} />
+        <Review key={open.id} item={open} source={source} onBack={() => setOpenId(undefined)} onDecided={decided} onSaved={savedDraft} />
       </main>
     );
   }
@@ -200,7 +205,7 @@ function Inbox({ source, email, onSignOut, onOpenConnect }: { source: InboxSourc
 
 type Confirm = 'approve' | 'reject' | undefined;
 
-function Review({ item, source, onBack, onDecided }: { item: InboxItem; source: InboxSource; onBack: () => void; onDecided: (next: InboxItem, text: string) => void }) {
+function Review({ item, source, onBack, onDecided, onSaved }: { item: InboxItem; source: InboxSource; onBack: () => void; onDecided: (next: InboxItem, text: string) => void; onSaved: (next: InboxItem) => void }) {
   const [editing, setEditing] = useState(false);
   const [text, setText] = useState(item.body);
   const [confirm, setConfirm] = useState<Confirm>();
@@ -208,6 +213,7 @@ function Review({ item, source, onBack, onDecided }: { item: InboxItem; source: 
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string>();
   const [copied, setCopied] = useState(false);
+  const [justSaved, setJustSaved] = useState(false);
   const waiting = item.status === 'waiting';
 
   async function copyText() {
@@ -230,6 +236,22 @@ function Review({ item, source, onBack, onDecided }: { item: InboxItem; source: 
     setTimeout(() => URL.revokeObjectURL(url), 1000);
   }
   const changed = editing && text !== item.body;
+
+  async function saveDraft() {
+    setBusy(true);
+    setError(undefined);
+    try {
+      const next = await source.save(item, text);
+      onSaved(next);
+      setEditing(false);
+      setJustSaved(true);
+      setTimeout(() => setJustSaved(false), 6000);
+    } catch (e) {
+      setError(message(e));
+    } finally {
+      setBusy(false);
+    }
+  }
 
   async function run(kind: 'approve' | 'reject') {
     setBusy(true);
@@ -255,6 +277,7 @@ function Review({ item, source, onBack, onDecided }: { item: InboxItem; source: 
         <button className="link back" onClick={onBack}>← Back to inbox</button>
         <h1 className="title">{item.title}</h1>
         <p className="muted">{item.description}</p>
+        {waiting && item.edited && <p className="small" role="status">{justSaved ? 'Saved ✓ ' : ''}Your edits are saved. This article is not approved yet.</p>}
 
         <section className={`card callout ${scoreTone(item)}`}>
           <div className="score">
@@ -372,7 +395,10 @@ function Review({ item, source, onBack, onDecided }: { item: InboxItem; source: 
             <div className="actions">
               <button className="btn danger-o" onClick={() => setConfirm('reject')}>Reject</button>
               {editing ? (
-                <button className="btn" onClick={() => { setEditing(false); setText(item.body); }}>Cancel edit</button>
+                <>
+                  <button className="btn" disabled={busy} onClick={() => { setEditing(false); setText(item.body); }}>Cancel edit</button>
+                  <button className="btn" disabled={busy || !changed || !text.trim()} onClick={() => void saveDraft()}>{busy ? 'Saving…' : 'Save changes'}</button>
+                </>
               ) : (
                 <button className="btn" onClick={() => setEditing(true)}>Edit</button>
               )}
