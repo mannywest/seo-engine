@@ -16,5 +16,5 @@
   "bannedClaims": ["guaranteed", "revolutionary", "game-changing", "10x", "cutting-edge", "unlock the power"],
   "minInternalLinks": 2,
   "wordRange": { "min": 900, "max": 1800 },
-  "publish": { "mode": "review", "inbox": true, "cadencePerWeek": 14, "contentDir": "src/content/blog" }
+  "publish": { "mode": "review", "inbox": true, "cadencePerWeek": 1000, "contentDir": "src/content/blog" }
 }
