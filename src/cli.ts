@@ -11,6 +11,7 @@ import { buildReceipt } from './receipt.js';
 import { UsageLog } from './usage.js';
 import { notify } from './notify.js';
 import { chooseLlm } from './providers/choose.js';
+import { describeError } from './retry.js';
 import { loadProfile, runClient } from './runClient.js';
 import { fetchGscQueries } from './seo/gscApi.js';
 import { onboardSite } from './seo/onboard.js';
@@ -146,7 +147,7 @@ async function cmdRunAll() {
         if (r.deliveryNote?.startsWith('Delivery failed')) failures.push(`${profile.id}: ${r.deliveryNote}`);
       }
     } catch (e) {
-      const msg = `${f}: ${e instanceof Error ? e.message : String(e)}`;
+      const msg = `${f}: ${describeError(e)}`;
       console.error(`FAIL  ${msg}`);
       failures.push(msg);
     }
@@ -458,6 +459,6 @@ async function main() {
 }
 
 main().catch((e) => {
-  console.error(e instanceof Error ? e.message : e);
+  console.error(describeError(e));
   process.exit(1);
 });

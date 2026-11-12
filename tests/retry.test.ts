@@ -3,7 +3,7 @@ import { FallbackProvider } from '../src/providers/fallback.js';
 import { chooseLlm } from '../src/providers/choose.js';
 import type { LlmProvider } from '../src/providers/llm.js';
 import { OpenAiCompatProvider } from '../src/providers/openai.js';
-import { HttpError, isRetryableStatus, parseRetryAfter, withRetry } from '../src/retry.js';
+import { describeError, HttpError, isRetryableStatus, parseRetryAfter, withRetry } from '../src/retry.js';
 import { runPageSpeed } from '../src/seo/pagespeed.js';
 
 const noWait = { sleep: async () => undefined, random: () => 1 };
@@ -159,5 +159,78 @@ describe('PageSpeed retries', () => {
     await expect(
       runPageSpeed('https://x.test', 'mobile', {} as unknown as NodeJS.ProcessEnv, async () => reply(429), { ...noWait, attempts: 2 }),
     ).rejects.toThrow(/PAGESPEED_API_KEY/);
+  });
+});
+
+/** A fake fetch that never answers on its own but gives up when the request's time limit passes, like the real one. */
+const hang = (): typeof fetch =>
+  ((_url: unknown, init?: RequestInit) =>
+    new Promise((_resolve, reject) => {
+      init?.signal?.addEventListener('abort', () => reject(init.signal?.reason));
+    })) as unknown as typeof fetch;
+
+describe('a stuck AI request', () => {
+  const ok = reply(200, { choices: [{ message: { content: 'hello' }, finish_reason: 'stop' }] });
+
+  it('gives up on a request that never answers and says so in plain words', async () => {
+    let calls = 0;
+    const f = ((...a: Parameters<typeof fetch>) => {
+      calls += 1;
+      return hang()(...a);
+    }) as typeof fetch;
+    const p = new OpenAiCompatProvider('k', 'm', 'https://x.test/v1', f, noWait, 20);
+    await expect(p.complete(req)).rejects.toThrow(/did not answer within/);
+    // One redial, then it stops: a dead service must not eat the whole run.
+    expect(calls).toBe(2);
+  });
+
+  it('carries on when the second try gets through', async () => {
+    let calls = 0;
+    const f = ((...a: Parameters<typeof fetch>) => {
+      calls += 1;
+      return calls === 1 ? hang()(...a) : Promise.resolve(ok);
+    }) as typeof fetch;
+    const p = new OpenAiCompatProvider('k', 'm', 'https://x.test/v1', f, noWait, 20);
+    expect(await p.complete(req)).toBe('hello');
+    expect(calls).toBe(2);
+  });
+
+  it('passes a time limit with every request', async () => {
+    let signal: AbortSignal | null | undefined;
+    const f = (async (_u: unknown, init?: RequestInit) => {
+      signal = init?.signal;
+      return ok;
+    }) as unknown as typeof fetch;
+    await new OpenAiCompatProvider('k', 'm', 'https://x.test/v1', f, noWait).complete(req);
+    expect(signal).toBeInstanceOf(AbortSignal);
+  });
+
+  it('lets a backup AI take over when the main one stops answering', async () => {
+    const main = new OpenAiCompatProvider('k', 'm', 'https://x.test/v1', hang(), noWait, 20);
+    const backup: LlmProvider = { name: 'backup', complete: async () => 'from backup' };
+    expect(await new FallbackProvider([main, backup], () => undefined).complete(req)).toBe('from backup');
+  });
+
+  it('tells the log about each redial', async () => {
+    const seen: string[] = [];
+    let calls = 0;
+    const f = (async () => {
+      calls += 1;
+      return calls < 3 ? reply(503, 'busy') : ok;
+    }) as unknown as typeof fetch;
+    const p = new OpenAiCompatProvider('k', 'm', 'https://x.test/v1', f, { ...noWait, onRetry: (i) => void seen.push(`${i.attempt}/${i.attempts}`) }, 1000);
+    expect(await p.complete(req)).toBe('hello');
+    expect(seen).toEqual(['1/4', '2/4']);
+  });
+});
+
+describe('describeError', () => {
+  it('digs the real reason out of "fetch failed"', () => {
+    const e = new TypeError('fetch failed', { cause: Object.assign(new Error('Headers Timeout Error'), { code: 'UND_ERR_HEADERS_TIMEOUT' }) });
+    expect(describeError(e)).toBe('fetch failed (cause: UND_ERR_HEADERS_TIMEOUT: Headers Timeout Error)');
+  });
+  it('leaves plain errors alone', () => {
+    expect(describeError(new Error('boom'))).toBe('boom');
+    expect(describeError('text')).toBe('text');
   });
 });

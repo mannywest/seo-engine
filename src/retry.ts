@@ -29,6 +29,8 @@ export interface RetryOptions {
   sleep?: (ms: number) => Promise<void>;
   /** Replaceable so tests are predictable. Returns 0 to 1. */
   random?: () => number;
+  /** Called just before each wait, so a run's log shows that it is redialling and why. */
+  onRetry?: (info: { attempt: number; attempts: number; waitMs: number; error: unknown }) => void;
 }
 
 /** Reads the HTTP status off an error if it has one (our HttpError and the Anthropic SDK's errors both do). */
@@ -73,6 +75,25 @@ export function isDailyQuota(body: string): boolean {
   return /PerDay|per day/i.test(body);
 }
 
+/**
+ * A readable reason for an error. Node's fetch says only "fetch failed" and hides the real reason
+ * (no connection, timed out, refused) in .cause, so this digs it out for the log.
+ */
+export function describeError(e: unknown): string {
+  if (!(e instanceof Error)) return String(e);
+  const parts = [e.message];
+  let cause: unknown = (e as { cause?: unknown }).cause;
+  for (let depth = 0; cause && depth < 3; depth++) {
+    const c = cause as { code?: unknown; message?: unknown; cause?: unknown };
+    const code = typeof c.code === 'string' ? c.code : '';
+    const msg = typeof c.message === 'string' ? c.message : '';
+    const text = [code, msg].filter(Boolean).join(': ');
+    if (text && !parts.includes(text)) parts.push(text);
+    cause = c.cause;
+  }
+  return parts.length > 1 ? `${parts[0]} (cause: ${parts.slice(1).join('; ')})` : parts[0]!;
+}
+
 const realSleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
 
 export async function withRetry<T>(fn: () => Promise<T>, o: RetryOptions = {}): Promise<T> {
@@ -91,7 +112,9 @@ export async function withRetry<T>(fn: () => Promise<T>, o: RetryOptions = {}): 
       if (asked !== undefined && asked > maxMs) throw e;
       // Doubling wait with a little randomness (50% to 100%) so many clients do not all retry together.
       const backoff = Math.min(maxMs, baseMs * 2 ** (i - 1)) * (0.5 + random() * 0.5);
-      await sleep(Math.min(maxMs, asked ?? backoff));
+      const waitMs = Math.min(maxMs, asked ?? backoff);
+      o.onRetry?.({ attempt: i, attempts, waitMs, error: e });
+      await sleep(waitMs);
     }
   }
 }
