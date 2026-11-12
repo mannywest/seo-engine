@@ -1,5 +1,6 @@
 import { appCreated, config, contextFor, disconnect, finish, githubCallback, pending, prepareApp, startGithub } from './connect';
 import { GithubError } from './github';
+import { siteCheck, signup } from './publicApi';
 import { DbError } from './supabase';
 import type { Deps, Env } from './types';
 
@@ -17,6 +18,11 @@ export async function handle(req: Request, env: Env, deps: Deps = {}): Promise<R
   const route = `${req.method} ${url.pathname}`;
   try {
     switch (route) {
+      // The two public front-page addresses. Anyone may call them; see publicApi.ts for how they stay safe.
+      case 'POST /api/site-check':
+        return await siteCheck(req, { db: ctx.db, f: ctx.f, now: ctx.now, origin: ctx.origin, secret: env.SUPABASE_SERVICE_KEY?.trim() ?? '' });
+      case 'POST /api/signup':
+        return await signup(req, { db: ctx.db, f: ctx.f, now: ctx.now, origin: ctx.origin, secret: env.SUPABASE_SERVICE_KEY?.trim() ?? '' });
       case 'GET /api/connect/config':
         return await config(req, ctx);
       case 'POST /api/connect/github/start':
@@ -44,7 +50,7 @@ export async function handle(req: Request, env: Env, deps: Deps = {}): Promise<R
     const hint = ` (${key ? raw.split(key).join('[hidden]') : raw})`;
     return new Response(JSON.stringify({ error: `Something went wrong on our side. Please try again.${hint}`, code: 'server' }), { status: 500, headers: { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' } });
   }
-  const known = new Set(['/api/connect/config', '/api/connect/github/start', '/api/connect/github/callback', '/api/connect/github/pending', '/api/connect/github/finish', '/api/connect/disconnect', '/api/admin/github-app/prepare', '/api/admin/github-app/created']);
+  const known = new Set(['/api/site-check', '/api/signup', '/api/connect/config', '/api/connect/github/start', '/api/connect/github/callback', '/api/connect/github/pending', '/api/connect/github/finish', '/api/connect/disconnect', '/api/admin/github-app/prepare', '/api/admin/github-app/created']);
   return new Response(JSON.stringify({ error: known.has(url.pathname) ? 'That address does not accept this kind of request.' : 'Not found.' }), {
     status: known.has(url.pathname) ? 405 : 404,
     headers: { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' },

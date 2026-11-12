@@ -51,6 +51,12 @@ export class Db {
     return ((await this.send('PATCH', `${table}?${query}`, table, changes, { Prefer: 'return=representation' })) as T[] | undefined) ?? [];
   }
 
+  /** Removes the rows matching `query`. A query is required: there is deliberately no way to empty a whole table from here. */
+  async remove(table: string, query: string): Promise<void> {
+    if (!query.trim()) throw new Error('remove needs a query');
+    await this.send('DELETE', `${table}?${query}`, table, undefined, { Prefer: 'return=minimal' });
+  }
+
   async upsert(table: string, row: Record<string, unknown>, onConflict: string): Promise<void> {
     await this.send('POST', `${table}?on_conflict=${encodeURIComponent(onConflict)}`, table, row, { Prefer: 'resolution=merge-duplicates,return=minimal' });
   }

@@ -345,3 +345,41 @@ revoke all on function public.lodestar_get_secret(text) from public, anon, authe
 revoke all on function public.lodestar_put_secret(text, text) from public, anon, authenticated;
 grant execute on function public.lodestar_get_secret(text) to service_role;
 grant execute on function public.lodestar_put_secret(text, text) to service_role;
+
+-- ---------------------------------------------------------------------------------------------
+-- THE PUBLIC FRONT PAGE: free site check and sign-up requests.
+--
+-- Both are reached by strangers through the Worker (web/worker/publicApi.ts), which uses the service key.
+-- Nobody logged in can read or write either table: row-level security is on and there are deliberately NO policies.
+--
+-- public_hits  counts visits so each visitor and the site as a whole stay under hourly limits. It holds only a salted
+--              hash of the visitor's address, never the address. Rows older than a day are removed by the Worker.
+-- signup_requests  records a request to join and what the person agreed to. It starts nothing: the owner approves
+--              each request before the engine does any work for it.
+-- ---------------------------------------------------------------------------------------------
+create table if not exists public.public_hits (
+  id          bigint generated always as identity primary key,
+  kind        text not null check (kind in ('site_check', 'signup')),
+  ip_hash     text not null,
+  created_at  timestamptz not null default now()
+);
+create index if not exists public_hits_lookup_idx on public.public_hits (kind, ip_hash, created_at desc);
+create index if not exists public_hits_time_idx on public.public_hits (created_at);
+alter table public.public_hits enable row level security;
+
+create table if not exists public.signup_requests (
+  id               uuid primary key default gen_random_uuid(),
+  email            text not null check (email = lower(email) and length(email) <= 254),
+  site_url         text not null check (length(site_url) <= 300),
+  host             text not null check (length(host) <= 253),
+  consent_at       timestamptz not null,
+  consent_version  text not null default 'v1',
+  status           text not null default 'pending' check (status in ('pending', 'approved', 'declined')),
+  ip_hash          text,
+  created_at       timestamptz not null default now(),
+  decided_at       timestamptz,
+  decided_by       uuid references auth.users (id) on delete set null
+);
+-- One waiting request per person and site, so repeat taps do not pile up.
+create unique index if not exists signup_requests_one_pending_idx on public.signup_requests (email, host) where status = 'pending';
+alter table public.signup_requests enable row level security;
